@@ -1,0 +1,173 @@
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useCallback, useState } from "react";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { listConversations, type ConversationListItem } from "../src/db/conversations";
+import { listPendingRecordings } from "../src/db/pendingRecordings";
+import { MemoryListSkeleton } from "../src/components/ui";
+import { formatDuration, greeting, relativeDate } from "../src/utils/format";
+import { radii, shadows, spacing, type AppColors, typeScale, useAppTheme } from "../src/theme";
+
+function ActionTile({ icon, title, body, large = false, onPress, colors }: {
+  icon: keyof typeof Ionicons.glyphMap; title: string; body?: string; large?: boolean;
+  onPress: () => void; colors: AppColors;
+}) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress}
+      style={({ pressed }) => [styles.actionTile, large && styles.actionTileLarge,
+        { backgroundColor: colors.surface, borderColor: colors.line }, pressed && styles.pressed]}>
+      <View style={[styles.tileIcon, { backgroundColor: colors.accentSoft }]}>
+        <Ionicons name={icon} size={large ? 24 : 20} color={colors.accent} />
+      </View>
+      <Text style={[large ? styles.largeTileTitle : styles.tileTitle, { color: colors.ink }]}>{title}</Text>
+      {body ? <Text style={[styles.tileBody, { color: colors.muted }]}>{body}</Text> : null}
+      {large ? (
+        <View style={[styles.tileButton, { backgroundColor: colors.accent }]}>
+          <Text style={styles.tileButtonText}>Begin</Text>
+        </View>
+      ) : <Ionicons name="arrow-forward" size={20} color={colors.accent} style={styles.tileArrow} />}
+    </Pressable>
+  );
+}
+
+function MemoryCard({ item, colors, onPress }: { item: ConversationListItem; colors: AppColors; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}
+      accessibilityLabel={`${item.title}. ${relativeDate(item.createdAt)}. ${item.summary}`}
+      style={({ pressed }) => [styles.memoryCard, { backgroundColor: colors.surface, borderColor: colors.line }, pressed && styles.pressed]}>
+      <Text style={[styles.memoryDate, { color: colors.muted }]}>{relativeDate(item.createdAt)} · {formatDuration(item.durationMs)}</Text>
+      <Text numberOfLines={1} style={[styles.memoryTitle, { color: colors.ink }]}>{item.title}</Text>
+      <Text numberOfLines={2} style={[styles.memorySummary, { color: colors.muted }]}>{item.summary}</Text>
+      <View style={styles.memoryBottom}>
+        <Text style={[styles.memorySignals, { color: colors.faint }]}>{item.people.length} people · {item.actionItemCount} actions</Text>
+        <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+      </View>
+    </Pressable>
+  );
+}
+
+function RecentHeading({ colors }: { colors: AppColors }) {
+  return (
+    <View style={styles.recentHeading}>
+      <Text accessibilityRole="header" style={[styles.recentTitle, { color: colors.ink }]}>Your recent recordings</Text>
+      <View style={[styles.headingLine, { backgroundColor: colors.line }]} />
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const { colors, isDark } = useAppTheme();
+  const [items, setItems] = useState<ConversationListItem[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    const [conversations, pending] = await Promise.all([listConversations(), listPendingRecordings()]);
+    setItems(conversations); setPendingCount(pending.length); setLoaded(true); setRefreshing(false);
+  }, []);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  function record() { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/record"); }
+
+  return (
+    <View style={[styles.page, { backgroundColor: colors.background }]}>
+      {!isDark ? <Image source={require("../assets/ambient-memory-bg.png")} resizeMode="cover" style={styles.ambientBackground} /> : null}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => { setRefreshing(true); void load(); }} />}>
+        <View style={styles.searchRow}>
+          <Image
+            accessibilityLabel="Memory AI"
+            source={require("../assets/memory-ai-logo.png")}
+            resizeMode="cover"
+            style={[styles.brandLogo, { borderColor: colors.line }]}
+          />
+          <Pressable accessibilityRole="search" onPress={() => router.push("/search")}
+            style={[styles.search, { backgroundColor: colors.surface, borderColor: colors.line }]}>
+            <Ionicons name="search-outline" size={20} color={colors.muted} />
+            <Text style={[styles.searchText, { color: colors.muted }]}>Search your memories…</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Profile and settings" onPress={() => router.push("/account")}
+            style={[styles.settings, { backgroundColor: colors.surface, borderColor: colors.line }]}>
+            <Ionicons name="person-outline" size={22} color={colors.accent} />
+          </Pressable>
+        </View>
+
+        <Text style={[styles.eyebrow, { color: colors.accent }]}>{greeting()}</Text>
+        <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>Ready to remember something?</Text>
+
+        <View style={styles.actionsGrid}>
+          <ActionTile large icon="mic-outline" title="Record a conversation" body="Memory will capture the important moments for you." onPress={record} colors={colors} />
+          <View style={styles.smallActions}>
+            <ActionTile icon="sparkles-outline" title="Ask Memory" onPress={() => router.push("/search")} colors={colors} />
+            <ActionTile icon="archive-outline" title="Saved audio" onPress={() => router.push("/pending")} colors={colors} />
+          </View>
+        </View>
+
+        {pendingCount > 0 ? (
+          <Pressable onPress={() => router.push("/pending")} style={[styles.pending, { backgroundColor: colors.accentSoft, borderColor: colors.line }]}>
+            <Ionicons name="cloud-upload-outline" size={20} color={colors.accent} />
+            <Text style={[styles.pendingText, { color: colors.ink }]}>{pendingCount} recording{pendingCount === 1 ? "" : "s"} ready to continue</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.accent} />
+          </Pressable>
+        ) : null}
+
+        <RecentHeading colors={colors} />
+        {!loaded ? <MemoryListSkeleton /> : items.length ? (
+          <>
+            <View style={styles.memoryList}>{items.slice(0, 8).map(item => <MemoryCard key={item.id} item={item} colors={colors} onPress={() => router.push(`/conversation/${item.id}`)} />)}</View>
+          </>
+        ) : (
+          <View style={styles.emptyVisual} accessibilityLabel="No recordings yet">
+            <Image
+              source={require("../assets/empty-recordings.png")}
+              resizeMode="contain"
+              style={[styles.emptyImage, isDark && { borderColor: colors.line }]}
+            />
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1, overflow: "hidden" },
+  ambientBackground: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%", opacity: 0.9 },
+  content: { paddingHorizontal: spacing.lg, paddingTop: 58, paddingBottom: 70 },
+  searchRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
+  brandLogo: { width: 44, height: 44, borderRadius: 14, borderWidth: 1 },
+  search: { flex: 1, height: 52, borderRadius: radii.pill, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.md, ...shadows.card },
+  searchText: { fontSize: 14, flex: 1 },
+  settings: { width: 52, height: 52, borderRadius: 26, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  eyebrow: { fontSize: 13, fontWeight: "700", marginTop: spacing.xxxl, marginBottom: 5 },
+  heading: { fontSize: typeScale.title2, lineHeight: 34, fontWeight: "800", letterSpacing: -0.7, marginBottom: spacing.sm },
+  actionsGrid: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xl },
+  actionTile: { flex: 1, minHeight: 112, borderWidth: 1, borderRadius: radii.md, padding: spacing.md, position: "relative" },
+  actionTileLarge: { minHeight: 238 },
+  smallActions: { flex: 1, gap: spacing.sm },
+  tileIcon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  largeTileTitle: { fontSize: 20, lineHeight: 25, fontWeight: "800", marginTop: spacing.md },
+  tileTitle: { fontSize: 15, fontWeight: "800", marginTop: spacing.sm, paddingRight: 24 },
+  tileBody: { fontSize: 12, lineHeight: 17, marginTop: 5 },
+  tileArrow: { position: "absolute", right: spacing.md, bottom: spacing.md },
+  tileButton: { height: 40, borderRadius: radii.pill, alignItems: "center", justifyContent: "center", marginTop: "auto" },
+  tileButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
+  pending: { minHeight: 58, borderWidth: 1, borderRadius: radii.md, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.md },
+  pendingText: { flex: 1, fontSize: 13, fontWeight: "700" },
+  recentHeading: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xxxl, marginBottom: spacing.md },
+  recentTitle: { fontSize: typeScale.title3, fontWeight: "800", letterSpacing: -0.35 },
+  headingLine: { flex: 1, height: 1 },
+  emptyVisual: { alignItems: "center", justifyContent: "center", paddingVertical: spacing.md },
+  emptyImage: { width: 270, height: 270, borderRadius: radii.xl, borderWidth: 0 },
+  memoryList: { gap: spacing.sm },
+  memoryCard: { borderWidth: 1, borderRadius: radii.md, padding: spacing.md },
+  memoryDate: { fontSize: 12, fontWeight: "600" },
+  memoryTitle: { fontSize: 16, fontWeight: "800", marginTop: spacing.sm },
+  memorySummary: { fontSize: 13, lineHeight: 19, marginTop: 5 },
+  memoryBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.sm },
+  memorySignals: { fontSize: 11 },
+});

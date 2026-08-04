@@ -1,0 +1,17 @@
+node_modules
+.pnpm-store
+.expo
+dist
+dist-export
+coverage
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+uploads
+tmp
+/mobile-app/android
+/mobile-app/ios
+.DS_Store
+docs/

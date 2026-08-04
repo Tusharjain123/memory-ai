@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Memory AI",
+    "slug": "memory-ai",
+    "scheme": "memoryai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/memory-ai-logo.png",
+    "splash": {
+      "image": "./assets/memory-ai-splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#FFFFFF"
+    },
+    "android": {
+      "package": "ai.memory.mobile",
+      "edgeToEdgeEnabled": true,
+      "permissions": ["RECORD_AUDIO"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/memory-ai-logo.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      ["expo-audio", { "microphonePermission": "Allow Memory AI to record conversations." }],
+      ["expo-local-authentication", { "faceIDPermission": "Unlock your private conversation memory." }],
+      ["expo-secure-store", { "configureAndroidBackup": false }]
+    ],
+    "experiments": { "typedRoutes": true }
+  }
+}
