@@ -34,6 +34,19 @@ pnpm build:production
 pnpm typecheck
 pnpm test
 ```
+
+## Android preview build (EAS)
+
+```bash
+cd mobile-app
+pnpm install
+pnpx eas-cli login
+pnpx eas-cli init
+pnpm build:preview
+```
+
+Download the APK from the Expo build page and install it on a device. Preview/production profiles set `EXPO_PUBLIC_API_URL` in `eas.json`.
+
 Permanent conversation data remains in local SQLite. `src/contracts.ts` defines the mobile side of the backend HTTP contract. When the API shape changes, update both project copies intentionally.
 
 The product UX specification is in [`docs/UX_DESIGN.md`](docs/UX_DESIGN.md).

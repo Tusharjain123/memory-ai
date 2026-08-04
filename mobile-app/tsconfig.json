@@ -30,5 +30,6 @@
     "src",
     "expo-env.d.ts",
     ".expo/types/**/*.ts"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

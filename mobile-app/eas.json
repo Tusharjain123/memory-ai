@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "pnpm": "10.12.1",
       "android": {
         "buildType": "apk"
       },
@@ -16,6 +17,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "pnpm": "10.12.1",
       "android": {
         "buildType": "apk",
         "credentialsSource": "remote"
@@ -25,6 +27,7 @@
       }
     },
     "production": {
+      "pnpm": "10.12.1",
       "android": {
         "buildType": "app-bundle"
       },

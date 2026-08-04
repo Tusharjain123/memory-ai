@@ -2,12 +2,13 @@
   "name": "@memory-ai/mobile-app",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.12.1",
   "main": "expo-router/entry",
   "scripts": {
     "dev": "expo start",
     "android": "expo run:android",
-    "build:preview": "eas build --platform android --profile preview",
-    "build:production": "eas build --platform android --profile production",
+    "build:preview": "pnpx eas-cli build --platform android --profile preview",
+    "build:production": "pnpx eas-cli build --platform android --profile production",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "tsc -p tsconfig.json --noEmit",
@@ -21,6 +22,7 @@
     "expo-constants": "~17.1.8",
     "expo-crypto": "~14.1.5",
     "expo-file-system": "~18.1.10",
+    "expo-font": "~13.3.2",
     "expo-haptics": "~14.1.4",
     "expo-linking": "~7.1.7",
     "expo-local-authentication": "~16.0.5",
@@ -38,8 +40,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.0.10",
-    "eas-cli": "^16.28.0",
-    "typescript": "^5.8.3",
+    "typescript": "~5.8.3",
     "vitest": "^3.2.4"
   }
 }

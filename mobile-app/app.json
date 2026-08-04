@@ -46,7 +46,8 @@
         {
           "configureAndroidBackup": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
@@ -57,6 +58,9 @@
         "projectId": "aae547b3-db97-4599-bd94-94e79688101d"
       }
     },
-    "owner": "tusharjains-team"
+    "owner": "tusharjains-team",
+    "ios": {
+      "bundleIdentifier": "ai.memory.mobile"
+    }
   }
 }
