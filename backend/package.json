@@ -2,9 +2,15 @@
   "name": "@memory-ai/backend",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": "22.x",
+    "pnpm": "10.12.1"
+  },
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
+    "start": "node dist/src/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit"
@@ -29,5 +35,11 @@
     "@types/node": "^22.15.32",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "msgpackr-extract"
+    ]
   }
 }
