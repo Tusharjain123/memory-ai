@@ -15,7 +15,13 @@
     "android": {
       "package": "ai.memory.mobile",
       "edgeToEdgeEnabled": true,
-      "permissions": ["RECORD_AUDIO"],
+      "permissions": [
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/memory-ai-logo.png",
         "backgroundColor": "#FFFFFF"
@@ -23,10 +29,34 @@
     },
     "plugins": [
       "expo-router",
-      ["expo-audio", { "microphonePermission": "Allow Memory AI to record conversations." }],
-      ["expo-local-authentication", { "faceIDPermission": "Unlock your private conversation memory." }],
-      ["expo-secure-store", { "configureAndroidBackup": false }]
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Memory AI to record conversations."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock your private conversation memory."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ]
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "aae547b3-db97-4599-bd94-94e79688101d"
+      }
+    },
+    "owner": "tusharjains-team"
   }
 }

@@ -29,10 +29,11 @@ pnpm android
 pnpm dev
 pnpm android
 pnpm ios
+pnpm build:preview
+pnpm build:production
 pnpm typecheck
 pnpm test
 ```
-
 Permanent conversation data remains in local SQLite. `src/contracts.ts` defines the mobile side of the backend HTTP contract. When the API shape changes, update both project copies intentionally.
 
 The product UX specification is in [`docs/UX_DESIGN.md`](docs/UX_DESIGN.md).
