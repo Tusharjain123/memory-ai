@@ -11,6 +11,7 @@ import type {
 } from "../contracts";
 import { Job, Queue, Worker } from "bullmq";
 import Redis from "ioredis";
+import { hostname } from "node:os";
 import { DeepgramService } from "./deepgram.service.js";
 import { OllamaService } from "./ollama.service.js";
 import { TempAudioService } from "./temp-audio.service.js";
@@ -22,9 +23,15 @@ type ProcessingJob = {
   mimetype: string;
 };
 
-const QUEUE_NAME = "conversation-processing";
 export const RESULT_TTL_MS = 60 * 60_000;
 const SWEEP_INTERVAL_MS = 5 * 60_000;
+
+export function processingQueueName(
+  scope = process.env.PROCESSING_QUEUE_SCOPE?.trim() || hostname(),
+): string {
+  const safeScope = scope.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `conversation-processing-${safeScope}`;
+}
 
 @Injectable()
 export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
@@ -47,9 +54,10 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
       lazyConnect: true,
     });
     this.connection = connection;
-    this.queue = new Queue(QUEUE_NAME, { connection });
+    const queueName = processingQueueName();
+    this.queue = new Queue(queueName, { connection });
     this.worker = new Worker<ProcessingJob, ProcessedConversation>(
-      QUEUE_NAME,
+      queueName,
       async (job: Job<ProcessingJob>) => {
         try {
           await job.updateProgress(10);

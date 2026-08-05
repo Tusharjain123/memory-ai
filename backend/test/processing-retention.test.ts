@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  processingQueueName,
   ProcessingQueueService,
   RESULT_TTL_MS,
 } from "../src/processing/processing-queue.service.js";
 
 describe("temporary processing result retention", () => {
+  it("isolates workers by a Redis-safe host scope", () => {
+    expect(processingQueueName("backend.host:3000")).toBe(
+      "conversation-processing-backend_host_3000",
+    );
+  });
+
   it("actively removes completed and failed jobs older than one hour", async () => {
     const clean = vi.fn().mockResolvedValue([]);
     const service = new ProcessingQueueService(
