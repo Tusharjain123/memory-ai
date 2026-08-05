@@ -31,6 +31,8 @@ const understanding = {
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.OLLAMA_URL;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_EMBED_DIMENSIONS;
 });
 
 beforeEach(() => {
@@ -38,6 +40,29 @@ beforeEach(() => {
 });
 
 describe("OllamaService", () => {
+  it("batches conversation and segment text through OpenAI embeddings", async () => {
+    process.env.OPENAI_API_KEY = "openai-secret";
+    process.env.OPENAI_EMBED_DIMENSIONS = "2";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: [
+        { index: 0, embedding: [0.1, 0.2] },
+        { index: 1, embedding: [0.3, 0.4] },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await new OllamaService().embed(understanding);
+
+    expect(result).toHaveLength(2);
+    expect(result.every((item) => item.model === "text-embedding-3-large:2")).toBe(true);
+    expect(result.map((item) => item.sourceType)).toEqual(["conversation", "segment"]);
+    const body = JSON.parse(String(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit).body,
+    )) as { input: string[] };
+    expect(body.input[0]).toContain("Deployment planning");
+    expect(body.input[1]).toBe("We will deploy today.");
+  });
+
   it("sends a real JSON schema and validates structured understanding", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ message: { content: JSON.stringify(understanding) } }), {
@@ -139,5 +164,26 @@ describe("OllamaService", () => {
     ]);
     expect(result.cleanTranscript).toBe("We will deploy today.");
     expect(result.romanHinglishTranscript).toBe("Aaj deploy karenge.");
+  });
+
+  it("creates the memory when optional embedding generation fails", async () => {
+    const service = new OllamaService();
+    vi.spyOn(service, "understand").mockResolvedValue(understanding);
+    vi.spyOn(service, "embed").mockRejectedValue(new Error("Embedding failed (401)"));
+
+    const result = await service.assemble({
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{
+        speaker: 0,
+        startMs: 0,
+        endMs: 2_000,
+        text: "Aaj deploy karenge.",
+      }],
+    });
+
+    expect(result.title).toBe("Deployment planning");
+    expect(result.embeddings).toEqual([]);
   });
 });

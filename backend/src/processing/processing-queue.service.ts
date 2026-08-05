@@ -67,6 +67,11 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
         concurrency: Number(process.env.PROCESSING_CONCURRENCY ?? 2),
       },
     );
+    this.worker.on("failed", (job, error) => {
+      this.logger.error(
+        `Processing job ${job?.id ?? "unknown"} failed: ${error.message}`,
+      );
+    });
     this.runResultSweep();
     this.sweepTimer = setInterval(() => {
       this.runResultSweep();

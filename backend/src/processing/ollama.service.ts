@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import type {
   EmbeddingInsight,
   ProcessedConversation,
@@ -14,9 +14,12 @@ import {
   ollamaFetch,
   ollamaStructuredFormat,
 } from "../ollama/ollama-client.js";
+import { createOpenAiEmbeddings } from "../embeddings/openai-embeddings.js";
 
 @Injectable()
 export class OllamaService {
+  private readonly logger = new Logger(OllamaService.name);
+
   async understand(transcript: DeepgramResult): Promise<Understanding> {
     const speakerTranscript = transcript.utterances
       .map(
@@ -62,8 +65,6 @@ export class OllamaService {
   async embed(
     understanding: Understanding,
   ): Promise<EmbeddingInsight[]> {
-    const model =
-      process.env.OLLAMA_EMBED_MODEL ?? "qwen3-embedding:0.6b";
     const sources = [
       {
         sourceType: "conversation" as const,
@@ -75,22 +76,14 @@ export class OllamaService {
         sourceId: segment.id,
         text: segment.cleanText,
       })),
-    ];
-    const response = await ollamaFetch("embed", "/api/embed", {
-        model,
-        input: sources.map((source) => source.text),
-    });
-    if (!response.ok) {
-      throw new ServiceUnavailableException(`Embedding failed (${response.status})`);
-    }
-    const payload = (await response.json()) as { embeddings?: number[][] };
-    if (payload.embeddings?.length !== sources.length) {
-      throw new ServiceUnavailableException("Embedding count mismatch");
-    }
+    ].filter((source) => source.text.trim());
+    const { model, vectors } = await createOpenAiEmbeddings(
+      sources.map((source) => source.text),
+    );
     return sources.map((source, index) => ({
       ...source,
       model,
-      vector: payload.embeddings?.[index] ?? [],
+      vector: vectors[index] ?? [],
     }));
   }
 
@@ -130,7 +123,16 @@ export class OllamaService {
           task: item.task.trim(),
         })),
     };
-    const embeddings = await this.embed(faithfulUnderstanding);
+    let embeddings: EmbeddingInsight[] = [];
+    try {
+      embeddings = await this.embed(faithfulUnderstanding);
+    } catch (error) {
+      this.logger.warn(
+        `Memory created without semantic embeddings: ${
+          error instanceof Error ? error.message : "unknown embedding error"
+        }`,
+      );
+    }
     return {
       schemaVersion: 1,
       ...faithfulUnderstanding,

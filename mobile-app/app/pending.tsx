@@ -36,7 +36,10 @@ export default function PendingRecordingsScreen() {
       const message = cause instanceof Error ? cause.message : "Processing is unavailable";
       await setPendingRecordingError(item.id, message);
       await load();
-      Alert.alert("Still safely saved", "Memory couldn’t finish processing yet. Try again when your connection and backend are available.");
+      Alert.alert(
+        "Still safely saved",
+        `${message}\n\nYour audio is safe on this device. Try again when your connection and backend are available.`,
+      );
     } finally {
       setProcessingId(null);
     }

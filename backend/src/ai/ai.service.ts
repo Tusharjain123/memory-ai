@@ -9,6 +9,7 @@ import {
   ollamaFetch,
   ollamaStructuredFormat,
 } from "../ollama/ollama-client.js";
+import { createOpenAiEmbeddings } from "../embeddings/openai-embeddings.js";
 
 const answerSchema = {
   type: "object",
@@ -27,17 +28,8 @@ const answerResultSchema = z.object({
 @Injectable()
 export class AiService {
   async embed(text: string): Promise<EmbeddingVectorResponse> {
-    const model =
-      process.env.OLLAMA_EMBED_MODEL ?? "qwen3-embedding:0.6b";
-    const response = await ollamaFetch("embed", "/api/embed", {
-        model,
-        input: text,
-    });
-    if (!response.ok) {
-      throw new ServiceUnavailableException(`Embedding failed (${response.status})`);
-    }
-    const payload = (await response.json()) as { embeddings?: number[][] };
-    const vector = payload.embeddings?.[0];
+    const { model, vectors } = await createOpenAiEmbeddings([text]);
+    const vector = vectors[0];
     if (!vector?.length) {
       throw new ServiceUnavailableException("Embedding returned no vector");
     }

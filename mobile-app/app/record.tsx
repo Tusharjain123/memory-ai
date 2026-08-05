@@ -7,10 +7,10 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
-  useAudioRecorderState,
 } from "expo-audio";
 import { useNavigation, useRouter } from "expo-router";
 import { saveConversation } from "../src/db/conversations";
+import { useSafeAudioRecorderState } from "../src/hooks/useSafeAudioRecorderState";
 import { createPendingRecording, setPendingRecordingError } from "../src/db/pendingRecordings";
 import { processRecording } from "../src/services/processing";
 import { persistRecording } from "../src/services/recordings";
@@ -24,6 +24,32 @@ function time(ms: number): string {
 }
 
 const EMPTY_LEVELS = Array.from({ length: 28 }, () => 0);
+const START_TIMEOUT_MS = 8_000;
+
+const recordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY!,
+  isMeteringEnabled: true,
+};
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              `${label} timed out. On an Android emulator, open Extended controls → Microphone and enable “Virtual microphone uses host audio input”, or try a physical phone.`,
+            ),
+          );
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function Waveform({ levels, active, color, faint }: { levels: number[]; active: boolean; color: string; faint: string }) {
   return (
@@ -39,12 +65,36 @@ export default function RecordScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { colors, isDark } = useAppTheme();
-  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY!, isMeteringEnabled: true });
-  const recorderState = useAudioRecorderState(recorder, 120);
+  const recorder = useAudioRecorder(recordingOptions);
   const { status, error, setStatus, setElapsedMs, setError, reset } = useRecordingStore();
+  const recorderState = useSafeAudioRecorderState(recorder, {
+    enabled: status === "recording" || status === "paused",
+    intervalMs: 80,
+    pollWhilePaused: status === "paused",
+  });
   const pulse = useRef(new Animated.Value(0)).current;
   const allowExitRef = useRef(false);
+  const startingRef = useRef(false);
   const [levels, setLevels] = useState(EMPTY_LEVELS);
+  const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        await requestRecordingPermissionsAsync();
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+          interruptionMode: "doNotMix",
+          interruptionModeAndroid: "doNotMix",
+          shouldPlayInBackground: false,
+          shouldRouteThroughEarpiece: false,
+        });
+      } catch {
+        // Permission / audio mode will be retried when the user starts recording.
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     setElapsedMs(recorderState.durationMillis);
@@ -72,16 +122,67 @@ export default function RecordScreen() {
   }, [pulse, status]);
 
   async function start(): Promise<void> {
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Microphone access needed", "Allow microphone access to capture a private memory.");
+    if (startingRef.current || status === "recording" || status === "paused" || status === "processing") {
       return;
     }
-    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setStatus("recording");
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      const permission = await withTimeout(
+        requestRecordingPermissionsAsync(),
+        START_TIMEOUT_MS,
+        "Microphone permission",
+      );
+      if (!permission.granted) {
+        Alert.alert("Microphone access needed", "Allow microphone access to capture a private memory.");
+        return;
+      }
+
+      await withTimeout(
+        setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+          interruptionMode: "doNotMix",
+          interruptionModeAndroid: "doNotMix",
+          shouldPlayInBackground: false,
+          shouldRouteThroughEarpiece: false,
+        }),
+        START_TIMEOUT_MS,
+        "Audio mode setup",
+      );
+
+      // If a previous attempt left an active recording, stop it first.
+      if (recorder.isRecording) {
+        await withTimeout(recorder.stop(), 3_000, "Microphone reset");
+      }
+
+      await withTimeout(recorder.prepareToRecordAsync(), START_TIMEOUT_MS, "Microphone prepare");
+      recorder.record();
+
+      // Give Android a brief moment; then proceed even if isRecording lags behind.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const next = recorder.getStatus();
+      if (!next.isRecording && !next.canRecord) {
+        throw new Error("Microphone could not start. Check emulator mic settings or try a physical phone.");
+      }
+
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setStatus("recording");
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Could not start recording";
+      if (recorder.isRecording) {
+        try {
+          await withTimeout(recorder.stop(), 3_000, "Microphone reset");
+        } catch {
+          // Best-effort reset so the next attempt can prepare again.
+        }
+      }
+      Alert.alert("Recording failed", message);
+      setError(message);
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
   }
 
   async function togglePause(): Promise<void> {
@@ -99,10 +200,11 @@ export default function RecordScreen() {
     let pendingId: string | undefined;
     try {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setStatus("processing");
+      setLevels(EMPTY_LEVELS);
       await recorder.stop();
       const uri = recorder.uri;
       if (!uri) throw new Error("The recording file was not created");
-      setStatus("processing");
       const savedUri = await persistRecording(uri);
       const pending = await createPendingRecording(savedUri);
       pendingId = pending.id;
@@ -134,6 +236,8 @@ export default function RecordScreen() {
           onPress: () => {
             void (async () => {
               allowExitRef.current = true;
+              setStatus("idle");
+              setLevels(EMPTY_LEVELS);
               try { await recorder.stop(); } catch { /* Recorder may already be stopped by the OS. */ }
               reset();
               navigation.dispatch(event.data.action);
@@ -142,7 +246,7 @@ export default function RecordScreen() {
         },
       ],
     );
-  }), [active, navigation, recorder, reset, status]);
+  }), [active, navigation, recorder, reset, setStatus, status]);
 
   return (
     <View style={[styles.page, { backgroundColor: colors.background }]}> 
@@ -168,19 +272,40 @@ export default function RecordScreen() {
               transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.2] }) }],
             },
           ]}
+          pointerEvents="none"
         />
-        <View style={[styles.recordOrb, { backgroundColor: processing ? colors.sageSoft : colors.accentSoft, borderColor: colors.surface }]}> 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={status === "idle" || status === "error" ? "Begin recording" : undefined}
+          disabled={starting || processing || active}
+          onPress={() => {
+            if (status === "idle" || status === "error") void start();
+          }}
+          style={({ pressed }) => [
+            styles.recordOrb,
+            { backgroundColor: processing ? colors.sageSoft : colors.accentSoft, borderColor: colors.surface },
+            pressed && (status === "idle" || status === "error") && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+          ]}
+        >
           <Ionicons
-            name={processing ? "sparkles" : status === "paused" ? "pause" : "mic"}
+            name={processing ? "sparkles" : starting ? "hourglass" : status === "paused" ? "pause" : "mic"}
             size={38}
             color={processing ? colors.sage : colors.accent}
           />
-        </View>
+        </Pressable>
         <Text accessibilityLabel={`Recording time ${time(recorderState.durationMillis)}`} style={[styles.timer, { color: colors.ink }]}>
           {time(recorderState.durationMillis)}
         </Text>
         <Text style={[styles.status, { color: colors.muted }]}> 
-          {processing ? "Processing securely…" : status === "paused" ? "Paused" : status === "recording" ? "Recording" : "No audio leaves your phone until you finish"}
+          {processing
+            ? "Processing securely…"
+            : starting
+              ? "Starting microphone…"
+              : status === "paused"
+                ? "Paused"
+                : status === "recording"
+                  ? "Recording"
+                  : "No audio leaves your phone until you finish"}
         </Text>
         <Waveform levels={levels} active={status === "recording"} color={colors.accent} faint={colors.faint} />
       </View>
@@ -219,11 +344,18 @@ export default function RecordScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Begin recording"
+            disabled={starting}
             onPress={() => void start()}
-            style={({ pressed }) => [styles.start, { backgroundColor: colors.accent }, pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }]}
+            style={({ pressed }) => [
+              styles.start,
+              { backgroundColor: colors.accent },
+              (pressed || starting) && { opacity: 0.8, transform: [{ scale: 0.98 }] },
+            ]}
           >
-            <View style={[styles.startDot, { backgroundColor: colors.accent }]} />
-            <Text style={styles.startText}>{status === "error" ? "Record another" : "Start recording"}</Text>
+            <View style={[styles.startDot, { backgroundColor: "#FFFFFF" }]} />
+            <Text style={styles.startText}>
+              {starting ? "Starting…" : status === "error" ? "Record another" : "Start recording"}
+            </Text>
           </Pressable>
         ) : active ? (
           <View style={styles.activeControls}>

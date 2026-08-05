@@ -1,13 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
+import * as Haptics from "expo-haptics";
 import { useCallback, type ComponentProps, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useState } from "react";
 import { getUserProfile, type UserProfile } from "../src/db/profile";
+import { useThemeStore, type ThemePreference } from "../src/store/useThemeStore";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
+
+const THEME_OPTIONS: { value: ThemePreference; label: string; icon: IconName; body: string }[] = [
+  { value: "system", label: "System", icon: "phone-portrait-outline", body: "Match your device appearance" },
+  { value: "dark", label: "Dark", icon: "moon-outline", body: "Always use the dark theme" },
+  { value: "light", label: "Light", icon: "sunny-outline", body: "Always use the light theme" },
+];
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
   const { colors, isDark } = useAppTheme();
@@ -42,14 +50,61 @@ function SettingsRow({ icon, title, body, value, danger = false, last = false, o
   ) : <View style={shared}>{content}</View>;
 }
 
+function ThemeOptionRow({
+  option,
+  selected,
+  last,
+  onSelect,
+}: {
+  option: (typeof THEME_OPTIONS)[number];
+  selected: boolean;
+  last: boolean;
+  onSelect: () => void;
+}) {
+  const { colors } = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${option.label} theme`}
+      onPress={onSelect}
+      style={({ pressed }) => [
+        styles.row,
+        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+        pressed && { opacity: 0.58 },
+      ]}
+    >
+      <View style={[styles.rowIcon, { backgroundColor: colors.accentSoft }]}>
+        <Ionicons name={option.icon} size={20} color={colors.accent} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text style={[styles.rowTitle, { color: colors.ink }]}>{option.label}</Text>
+        <Text style={[styles.rowBody, { color: colors.muted }]}>{option.body}</Text>
+      </View>
+      <Ionicons
+        name={selected ? "checkmark-circle" : "ellipse-outline"}
+        size={22}
+        color={selected ? colors.accent : colors.faint}
+      />
+    </Pressable>
+  );
+}
+
 export default function AccountScreen() {
   const router = useRouter();
-  const { colors, isDark } = useAppTheme();
+  const { colors, isDark, preference } = useAppTheme();
+  const setPreference = useThemeStore((state) => state.setPreference);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   useFocusEffect(useCallback(() => { void getUserProfile().then(setProfile); }, []));
 
   const detail = [profile?.email, profile?.phone].filter(Boolean).join(" · ") || "Optional details stored locally";
   const initial = profile?.name.trim().slice(0, 1).toUpperCase() || "M";
+
+  async function selectTheme(next: ThemePreference): Promise<void> {
+    if (next === preference) return;
+    await setPreference(next);
+    void Haptics.selectionAsync();
+  }
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -62,6 +117,18 @@ export default function AccountScreen() {
         </View>
         <Ionicons name="create-outline" size={21} color={colors.accent} />
       </Pressable>
+
+      <SettingsGroup title="APPEARANCE">
+        {THEME_OPTIONS.map((option, index) => (
+          <ThemeOptionRow
+            key={option.value}
+            option={option}
+            selected={preference === option.value}
+            last={index === THEME_OPTIONS.length - 1}
+            onSelect={() => void selectTheme(option.value)}
+          />
+        ))}
+      </SettingsGroup>
 
       <SettingsGroup title="GENERAL">
         <SettingsRow icon="person-outline" title="Edit profile" body="Name, age, gender, email and phone" onPress={() => router.push("/profile")} />

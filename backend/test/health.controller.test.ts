@@ -7,7 +7,9 @@ const trackedVariables = [
   "OLLAMA_URL",
   "OLLAMA_API_KEY",
   "OLLAMA_CHAT_MODEL",
-  "OLLAMA_EMBED_MODEL",
+  "OPENAI_API_KEY",
+  "OPENAI_EMBED_MODEL",
+  "OPENAI_EMBED_DIMENSIONS",
 ] as const;
 
 afterEach(() => {
@@ -29,15 +31,15 @@ describe("provider readiness", () => {
     }
   });
 
-  it("reports ready for authenticated Ollama Cloud chat and embeddings", () => {
+  it("reports ready for authenticated Ollama chat and OpenAI embeddings", () => {
     process.env.DEEPGRAM_API_KEY = "deepgram-secret";
     process.env.OLLAMA_URL = "https://ollama.com";
     process.env.OLLAMA_API_KEY = "chat-secret";
-    process.env.OLLAMA_EMBED_MODEL = "qwen3-embedding:0.6b";
+    process.env.OPENAI_API_KEY = "openai-secret";
 
     expect(new HealthController().ready()).toEqual({
       status: "ready",
-      providers: { deepgram: true, ollamaChat: true, ollamaEmbed: true },
+      providers: { deepgram: true, ollamaChat: true, openAiEmbed: true },
     });
   });
 
@@ -46,18 +48,22 @@ describe("provider readiness", () => {
     process.env.OLLAMA_URL = "https://ollama.com";
     process.env.OLLAMA_API_KEY = "chat-secret";
     process.env.OLLAMA_CHAT_MODEL = "qwen3.5:397b";
-    process.env.OLLAMA_EMBED_MODEL = "qwen3-embedding:0.6b";
+    process.env.OPENAI_API_KEY = "openai-secret";
+    process.env.OPENAI_EMBED_MODEL = "text-embedding-3-large";
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes("deepgram.com")) {
         return new Response("{}", { status: 200 });
       }
+      if (url.includes("api.openai.com")) {
+        return new Response(JSON.stringify({ id: "text-embedding-3-large" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       return new Response(
         JSON.stringify({
-          models: [
-            { name: "qwen3.5:397b" },
-            { name: "qwen3-embedding:0.6b" },
-          ],
+          models: [{ name: "qwen3.5:397b" }],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
@@ -65,19 +71,20 @@ describe("provider readiness", () => {
 
     await expect(new HealthController().providers()).resolves.toEqual({
       status: "ready",
-      providers: { deepgram: true, ollamaChat: true, ollamaEmbed: true },
+      providers: { deepgram: true, ollamaChat: true, openAiEmbed: true },
     });
   });
 
-  it("reports an unavailable embedding model", async () => {
+  it("reports unavailable OpenAI embedding access", async () => {
     process.env.DEEPGRAM_API_KEY = "deepgram-secret";
     process.env.OLLAMA_URL = "https://ollama.com";
     process.env.OLLAMA_API_KEY = "cloud-secret";
     process.env.OLLAMA_CHAT_MODEL = "qwen3";
-    process.env.OLLAMA_EMBED_MODEL = "qwen3-embedding:0.6b";
+    process.env.OPENAI_API_KEY = "openai-secret";
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes("deepgram.com")) return new Response("{}", { status: 200 });
+      if (url.includes("api.openai.com")) return new Response("{}", { status: 404 });
       return new Response(JSON.stringify({ models: [{ name: "qwen3" }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },

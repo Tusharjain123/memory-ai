@@ -1,4 +1,5 @@
 import { useColorScheme } from "react-native";
+import { useThemeStore, type ThemePreference } from "./store/useThemeStore";
 
 export type AppColors = {
   background: string;
@@ -106,10 +107,19 @@ export const shadows = {
   },
 } as const;
 
+export function resolveIsDark(preference: ThemePreference, systemScheme: string | null | undefined): boolean {
+  if (preference === "dark") return true;
+  if (preference === "light") return false;
+  return systemScheme === "dark";
+}
+
 export function useAppTheme(): {
   colors: AppColors;
   isDark: boolean;
+  preference: ThemePreference;
 } {
-  const isDark = useColorScheme() === "dark";
-  return { colors: isDark ? darkColors : lightColors, isDark };
+  const systemScheme = useColorScheme();
+  const preference = useThemeStore((state) => state.preference);
+  const isDark = resolveIsDark(preference, systemScheme);
+  return { colors: isDark ? darkColors : lightColors, isDark, preference };
 }

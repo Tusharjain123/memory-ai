@@ -5,6 +5,10 @@ import {
 } from "@nestjs/common";
 import { resolveOllamaWorkloadConnection } from "./ollama/ollama-client.js";
 import { ollamaModels } from "./ollama/ollama-client.js";
+import {
+  checkOpenAiEmbeddingModel,
+  resolveOpenAiEmbeddingConfig,
+} from "./embeddings/openai-embeddings.js";
 
 @Controller("health")
 export class HealthController {
@@ -16,7 +20,7 @@ export class HealthController {
   @Get("ready")
   ready(): {
     status: "ready";
-    providers: { deepgram: true; ollamaChat: true; ollamaEmbed: true };
+    providers: { deepgram: true; ollamaChat: true; openAiEmbed: true };
   } {
     const issues: string[] = [];
     if (!process.env.DEEPGRAM_API_KEY) {
@@ -28,9 +32,9 @@ export class HealthController {
       issues.push(error instanceof Error ? error.message : "Ollama chat is not configured");
     }
     try {
-      resolveOllamaWorkloadConnection("embed");
+      resolveOpenAiEmbeddingConfig();
     } catch (error) {
-      issues.push(error instanceof Error ? error.message : "Ollama embeddings are not configured");
+      issues.push(error instanceof Error ? error.message : "OpenAI embeddings are not configured");
     }
     if (issues.length) {
       throw new ServiceUnavailableException({
@@ -40,14 +44,14 @@ export class HealthController {
     }
     return {
       status: "ready",
-      providers: { deepgram: true, ollamaChat: true, ollamaEmbed: true },
+      providers: { deepgram: true, ollamaChat: true, openAiEmbed: true },
     };
   }
 
   @Get("providers")
   async providers(): Promise<{
     status: "ready";
-    providers: { deepgram: true; ollamaChat: true; ollamaEmbed: true };
+    providers: { deepgram: true; ollamaChat: true; openAiEmbed: true };
   }> {
     const checks = await Promise.allSettled([
       this.checkDeepgram(),
@@ -55,12 +59,9 @@ export class HealthController {
         "chat",
         process.env.OLLAMA_CHAT_MODEL ?? "qwen3",
       ),
-      this.checkOllamaModel(
-        "embed",
-        process.env.OLLAMA_EMBED_MODEL ?? "qwen3-embedding:0.6b",
-      ),
+      checkOpenAiEmbeddingModel(),
     ]);
-    const labels = ["Deepgram", "Ollama chat", "Ollama embeddings"];
+    const labels = ["Deepgram", "Ollama chat", "OpenAI embeddings"];
     const issues = checks.flatMap((result, index) =>
       result.status === "rejected"
         ? [`${labels[index]}: ${this.errorMessage(result.reason)}`]
@@ -74,7 +75,7 @@ export class HealthController {
     }
     return {
       status: "ready",
-      providers: { deepgram: true, ollamaChat: true, ollamaEmbed: true },
+      providers: { deepgram: true, ollamaChat: true, openAiEmbed: true },
     };
   }
 

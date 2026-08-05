@@ -1,10 +1,18 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
 import { useAppTheme } from "../src/theme";
 import { AppLock } from "../src/components/AppLock";
+import { useThemeStore } from "../src/store/useThemeStore";
 
 export default function RootLayout() {
   const { colors, isDark } = useAppTheme();
+  const hydrateTheme = useThemeStore((state) => state.hydrate);
+
+  useEffect(() => {
+    void hydrateTheme();
+  }, [hydrateTheme]);
+
   return (
     <AppLock>
       <StatusBar style={isDark ? "light" : "dark"} />

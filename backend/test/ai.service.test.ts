@@ -4,6 +4,8 @@ import { AiService } from "../src/ai/ai.service.js";
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.OLLAMA_URL;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_EMBED_DIMENSIONS;
 });
 
 beforeEach(() => {
@@ -11,6 +13,19 @@ beforeEach(() => {
 });
 
 describe("AiService", () => {
+  it("uses OpenAI embeddings with a dimension-specific model identity", async () => {
+    process.env.OPENAI_API_KEY = "openai-secret";
+    process.env.OPENAI_EMBED_DIMENSIONS = "2";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: [{ index: 0, embedding: [0.25, 0.75] }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    await expect(new AiService().embed("deployment")).resolves.toEqual({
+      model: "text-embedding-3-large:2",
+      vector: [0.25, 0.75],
+    });
+  });
+
   it("treats memories as JSON data and removes invented citations", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       message: {
