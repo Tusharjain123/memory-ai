@@ -1,77 +1,109 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
-import { FlatList, Image, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
-import { listPeople, type PersonMemory } from "../src/db/insights";
-import { relativeDate } from "../src/utils/format";
+import { Image, Pressable, SectionList, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import {
+  listPeopleByConversation,
+  type ConversationPerson,
+  type PeopleConversationSection,
+} from "../src/db/people";
+import { formatDuration, relativeDate } from "../src/utils/format";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
-function relationship(count: number): string {
-  if (count >= 5) return "Frequent collaborator";
-  if (count >= 2) return "Growing context";
-  return "New connection";
-}
+type DirectorySection = PeopleConversationSection & {
+  data: ConversationPerson[];
+};
 
 export default function PeopleScreen() {
+  const router = useRouter();
   const { colors, isDark } = useAppTheme();
-  const [people, setPeople] = useState<PersonMemory[]>([]);
-  useFocusEffect(useCallback(() => { void listPeople().then(setPeople); }, []));
+  const [sections, setSections] = useState<DirectorySection[]>([]);
+  useFocusEffect(useCallback(() => {
+    void listPeopleByConversation().then((items) =>
+      setSections(items.map((item) => ({ ...item, data: item.people })))
+    );
+  }, []));
 
   return (
     <View style={[styles.page, { backgroundColor: colors.background }]}>
-      <FlatList
-        data={people}
-        keyExtractor={(item) => item.id}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => `${item.conversationId}:${item.speakerLabel}`}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.list, !people.length && styles.emptyList]}
+        stickySectionHeadersEnabled={false}
+        contentContainerStyle={[styles.list, !sections.length && styles.emptyList]}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>People you remember</Text>
-            <Text style={[styles.intro, { color: colors.muted }]}>A quiet relationship history, built from your conversations.</Text>
+            <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>People by recording</Text>
+            <Text style={[styles.intro, { color: colors.muted }]}>Identify each speaker and keep the context you want to remember.</Text>
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyVisual} accessibilityLabel="No remembered people yet">
-            <Image source={require("../assets/empty-people.png")} resizeMode="contain" style={styles.emptyImage} />
+            <Image
+              source={isDark
+                ? require("../assets/empty-people-dark.png")
+                : require("../assets/empty-people.png")}
+              resizeMode="contain"
+              style={styles.emptyImage}
+            />
           </View>
         }
-        renderItem={({ item, index }) => (
-          <View
-            style={[
-              styles.card,
+        renderSectionHeader={({ section }) => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open recording ${section.title}`}
+            onPress={() => router.push(`/conversation/${section.conversationId}`)}
+            style={({ pressed }) => [styles.recordingHeader, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={[styles.recordingDate, { color: colors.muted }]}>{relativeDate(section.createdAt)}</Text>
+            <View style={styles.recordingTitleRow}>
+              <Text numberOfLines={1} style={[styles.recordingTitle, { color: colors.ink }]}>{section.title}</Text>
+              <Text style={[styles.recordingTime, { color: colors.faint }]}>{formatDuration(section.durationMs)}</Text>
+              <Ionicons name="chevron-forward" size={17} color={colors.faint} />
+            </View>
+          </Pressable>
+        )}
+        renderItem={({ item, index, section }) => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${item.name}, ${item.speakerLabel}`}
+            onPress={() => router.push({
+              pathname: "/person/[id]",
+              params: {
+                id: item.personId,
+                conversationId: item.conversationId,
+                speakerLabel: item.speakerLabel,
+              },
+            } as never)}
+            style={({ pressed }) => [
+              styles.personRow,
               { backgroundColor: colors.surface },
               !isDark && shadows.card,
-              index > 0 && { marginTop: spacing.sm },
+              index === 0 && styles.firstPerson,
+              index === section.data.length - 1 && styles.lastPerson,
+              pressed && { opacity: 0.62 },
             ]}
           >
             <View style={[styles.avatar, { backgroundColor: index % 2 ? colors.accentSoft : colors.sageSoft }]}>
               <Text style={[styles.initial, { color: index % 2 ? colors.accent : colors.sage }]}>{item.name.slice(0, 1).toUpperCase()}</Text>
             </View>
             <View style={styles.details}>
-              <View style={styles.nameRow}>
-                <Text style={[styles.name, { color: colors.ink }]}>{item.name}</Text>
-                <View style={[styles.relationship, { backgroundColor: colors.surfaceMuted }]}>
-                  <Text style={[styles.relationshipText, { color: colors.muted }]}>{relationship(item.conversationCount)}</Text>
-                </View>
+              <Text style={[styles.name, { color: colors.ink }]}>{item.name}</Text>
+              <View style={styles.personMeta}>
+                <Text style={[styles.speakerLabel, { color: colors.muted }]}>{item.speakerLabel}</Text>
+                {item.relationship ? (
+                  <>
+                    <Text style={[styles.dot, { color: colors.faint }]}>·</Text>
+                    <Text numberOfLines={1} style={[styles.relationshipText, { color: colors.muted }]}>{item.relationship}</Text>
+                  </>
+                ) : null}
               </View>
-              <View style={styles.metaRow}>
-                <Ionicons name="chatbubbles-outline" size={15} color={colors.faint} />
-                <Text style={[styles.meta, { color: colors.muted }]}>{item.conversationCount} {item.conversationCount === 1 ? "conversation" : "conversations"}</Text>
-                <Text style={[styles.dot, { color: colors.faint }]}>·</Text>
-                <Text style={[styles.meta, { color: colors.muted }]}>{relativeDate(item.lastInteractionAt)}</Text>
-              </View>
-              {item.topics.length ? (
-                <View style={styles.topics}>
-                  {item.topics.slice(0, 3).map((topic) => (
-                    <View key={topic} style={[styles.topic, { backgroundColor: colors.sageSoft }]}>
-                      <Text style={[styles.topicText, { color: colors.sage }]}>{topic}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
             </View>
-          </View>
+            <Ionicons name="create-outline" size={19} color={colors.accent} />
+          </Pressable>
         )}
+        SectionSeparatorComponent={() => <View style={{ height: spacing.xl }} />}
       />
     </View>
   );
@@ -81,23 +113,25 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   emptyList: { flexGrow: 1 },
-  header: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+  header: { paddingTop: spacing.md, paddingBottom: spacing.lg },
   heading: { fontSize: typeScale.title1, fontWeight: "800", letterSpacing: -1 },
   intro: { fontSize: typeScale.body, lineHeight: 22, marginTop: spacing.xs, marginBottom: spacing.md },
   emptyVisual: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: spacing.xl },
   emptyImage: { width: 300, height: 300, borderRadius: radii.xl },
-  card: { borderRadius: radii.lg, padding: spacing.md, flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  avatar: { width: 54, height: 54, borderRadius: 19, alignItems: "center", justifyContent: "center" },
-  initial: { fontSize: typeScale.title3, fontWeight: "800" },
+  recordingHeader: { paddingHorizontal: spacing.xs, paddingBottom: spacing.sm },
+  recordingDate: { fontSize: 11, fontWeight: "800", letterSpacing: 0.7, textTransform: "uppercase" },
+  recordingTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: 3 },
+  recordingTitle: { flex: 1, fontSize: typeScale.bodyLarge, fontWeight: "800" },
+  recordingTime: { fontSize: typeScale.caption, fontVariant: ["tabular-nums"] },
+  personRow: { minHeight: 76, paddingHorizontal: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  firstPerson: { borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg },
+  lastPerson: { borderBottomLeftRadius: radii.lg, borderBottomRightRadius: radii.lg },
+  avatar: { width: 46, height: 46, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  initial: { fontSize: typeScale.bodyLarge, fontWeight: "800" },
   details: { flex: 1 },
-  nameRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.xs },
   name: { fontSize: typeScale.bodyLarge, fontWeight: "800" },
-  relationship: { minHeight: 25, borderRadius: radii.pill, justifyContent: "center", paddingHorizontal: 8 },
-  relationshipText: { fontSize: 10, fontWeight: "700" },
-  metaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 5, marginTop: spacing.xs },
-  meta: { fontSize: typeScale.caption },
+  personMeta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
+  speakerLabel: { fontSize: typeScale.caption, fontWeight: "600" },
+  relationshipText: { flexShrink: 1, fontSize: typeScale.caption },
   dot: { fontSize: typeScale.caption },
-  topics: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: spacing.sm },
-  topic: { minHeight: 28, borderRadius: radii.pill, justifyContent: "center", paddingHorizontal: 9 },
-  topicText: { fontSize: 11, fontWeight: "700" },
 });

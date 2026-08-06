@@ -67,7 +67,13 @@ export default function PendingRecordingsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyVisual} accessibilityLabel="No recordings are waiting to process">
-            <Image source={require("../assets/empty-saved-recordings.png")} resizeMode="contain" style={styles.emptyImage} />
+            <Image
+              source={isDark
+                ? require("../assets/empty-saved-recordings-dark.png")
+                : require("../assets/empty-saved-recordings.png")}
+              resizeMode="contain"
+              style={styles.emptyImage}
+            />
           </View>
         }
         renderItem={({ item, index }) => {

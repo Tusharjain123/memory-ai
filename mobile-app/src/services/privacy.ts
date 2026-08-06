@@ -59,6 +59,10 @@ export async function deleteAllData(): Promise<void> {
 }
 
 export async function exportConversation(item: ConversationDetail): Promise<void> {
+  const speakerHeading = (segment: ConversationDetail["segments"][number]) =>
+    segment.speakerName
+      ? `${segment.speakerName} (${segment.speakerLabel})`
+      : segment.speakerLabel;
   const markdown = [
     `# ${item.title}`,
     "",
@@ -79,7 +83,15 @@ export async function exportConversation(item: ConversationDetail): Promise<void
     "",
     "## Participants",
     "",
-    item.participants.map((person) => `- ${person.name} (${person.speakerLabel})`).join("\n"),
+    item.participants.map((person) => {
+      const details = [
+        person.speakerLabel,
+        person.relationship,
+        person.email,
+        person.phone,
+      ].filter(Boolean).join(" · ");
+      return `- ${person.name}${details ? ` (${details})` : ""}${person.notes ? ` — ${person.notes}` : ""}`;
+    }).join("\n"),
     "",
     "## Decisions",
     "",
@@ -93,15 +105,15 @@ export async function exportConversation(item: ConversationDetail): Promise<void
     "",
     "## Original transcript",
     "",
-    item.segments.map((segment) => `**${segment.speakerLabel}:** ${segment.rawText}`).join("\n\n"),
+    item.segments.map((segment) => `**${speakerHeading(segment)}:** ${segment.rawText}`).join("\n\n"),
     "",
     "## Clean transcript",
     "",
-    item.segments.map((segment) => `**${segment.speakerLabel}:** ${segment.cleanText}`).join("\n\n"),
+    item.segments.map((segment) => `**${speakerHeading(segment)}:** ${segment.cleanText}`).join("\n\n"),
     "",
     "## Roman Hinglish transcript",
     "",
-    item.segments.map((segment) => `**${segment.speakerLabel}:** ${segment.romanHinglishText}`).join("\n\n"),
+    item.segments.map((segment) => `**${speakerHeading(segment)}:** ${segment.romanHinglishText}`).join("\n\n"),
   ].join("\n");
   const directory = FileSystem.cacheDirectory;
   if (!directory) throw new Error("Export storage is unavailable");

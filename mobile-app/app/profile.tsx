@@ -2,10 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useState } from "react";
 import {
-  Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Alert, Pressable, StyleSheet, Text, TextInput, View,
   type KeyboardTypeOptions,
 } from "react-native";
 import { deleteUserProfile, EMPTY_PROFILE, getUserProfile, saveUserProfile, type UserProfile } from "../src/db/profile";
+import { KeyboardScreen } from "../src/components/KeyboardScreen";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 function ProfileField({ label, value, placeholder, icon, keyboardType = "default", onChangeText }: {
@@ -78,8 +79,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <KeyboardScreen backgroundColor={colors.background} contentContainerStyle={styles.content}>
         <View style={styles.profileHeader}>
           <View style={[styles.avatar, { backgroundColor: colors.accentSoft, borderColor: colors.surface }]}> 
             <Text style={[styles.initial, { color: colors.accent }]}>{profile.name.trim().slice(0, 1).toUpperCase() || "M"}</Text>
@@ -105,8 +105,7 @@ export default function ProfileScreen() {
         {hasProfile ? <Pressable accessibilityRole="button" onPress={confirmDelete} style={styles.removeButton}>
           <Text style={[styles.removeText, { color: colors.danger }]}>Remove profile details</Text>
         </Pressable> : null}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

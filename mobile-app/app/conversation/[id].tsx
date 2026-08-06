@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   deleteConversation,
   deleteRecording,
@@ -20,7 +20,8 @@ import {
 } from "../../src/db/conversations";
 import { askWithContext, retrieveMemories } from "../../src/services/ai";
 import { exportConversation } from "../../src/services/privacy";
-import { AvatarStack, InlineState, PrivacyPill, SectionHeader, SegmentedControl, SoftCard } from "../../src/components/ui";
+import { KeyboardScreen } from "../../src/components/KeyboardScreen";
+import { InlineState, PrivacyPill, SectionHeader, SegmentedControl, SoftCard } from "../../src/components/ui";
 import { formatDuration, relativeDate } from "../../src/utils/format";
 import { radii, spacing, typeScale, useAppTheme } from "../../src/theme";
 
@@ -38,7 +39,9 @@ export default function ConversationScreen() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
 
-  useEffect(() => { if (id) void getConversation(id).then(setItem); }, [id]);
+  useFocusEffect(useCallback(() => {
+    if (id) void getConversation(id).then(setItem);
+  }, [id]));
 
   if (item === undefined) {
     return (
@@ -100,13 +103,20 @@ export default function ConversationScreen() {
     } : current);
   }
 
+  function openPerson(personId: string, speakerLabel: string): void {
+    router.push({
+      pathname: "/person/[id]",
+      params: { id: personId, conversationId: item!.id, speakerLabel },
+    } as never);
+  }
+
   const pendingActions = item.actionItems.filter((action) => !action.completed);
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
+    <KeyboardScreen
+      backgroundColor={colors.background}
       contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
+      bottomOffset={88}
     >
       <View style={styles.hero}>
         <View style={styles.metadata}>
@@ -194,14 +204,39 @@ export default function ConversationScreen() {
             )) : <InlineState icon="git-branch-outline" title="No decisions captured" body="Memory didn’t detect a final decision here." />}
           </SoftCard>
 
-          <SectionHeader title="People" />
+          <SectionHeader
+            title="People"
+            {...(item.participants.length
+              ? { action: "Edit", onAction: () => router.push("/people") }
+              : {})}
+          />
           <SoftCard>
-            {item.participants.length ? (
-              <View style={styles.peopleRow}>
-                <AvatarStack names={item.people} max={5} />
-                <Text style={[styles.peopleNames, { color: colors.ink }]}>{item.people.join(", ")}</Text>
-              </View>
-            ) : <InlineState icon="person-outline" title="No named participants" body="Speaker labels remain available in the transcript." />}
+            {item.participants.length ? item.participants.map((person, index) => (
+              <Pressable
+                key={`${person.personId}:${person.speakerLabel}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${person.name}, ${person.speakerLabel}`}
+                onPress={() => openPerson(person.personId, person.speakerLabel)}
+                style={({ pressed }) => [
+                  styles.personRow,
+                  index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
+                <View style={[styles.personAvatar, { backgroundColor: index % 2 ? colors.accentSoft : colors.sageSoft }]}>
+                  <Text style={[styles.personInitial, { color: index % 2 ? colors.accent : colors.sage }]}>
+                    {person.name.slice(0, 1).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.personCopy}>
+                  <Text style={[styles.personName, { color: colors.ink }]}>{person.name}</Text>
+                  <Text style={[styles.personMeta, { color: colors.muted }]}>
+                    {[person.speakerLabel, person.relationship].filter(Boolean).join(" · ")}
+                  </Text>
+                </View>
+                <Ionicons name="create-outline" size={19} color={colors.accent} />
+              </Pressable>
+            )) : <InlineState icon="person-outline" title="No named participants" body="Speaker labels remain available in the transcript." />}
           </SoftCard>
         </View>
       ) : null}
@@ -226,7 +261,14 @@ export default function ConversationScreen() {
                 </View>
                 <View style={[styles.segmentCard, { backgroundColor: colors.surface }]}>
                   <View style={styles.segmentMeta}>
-                    <Text style={[styles.speaker, { color: colors.ink }]}>{segment.speakerLabel}</Text>
+                    <View>
+                      <Text style={[styles.speaker, { color: colors.ink }]}>
+                        {segment.speakerName ?? segment.speakerLabel}
+                      </Text>
+                      {segment.speakerName ? (
+                        <Text style={[styles.speakerSource, { color: colors.faint }]}>{segment.speakerLabel}</Text>
+                      ) : null}
+                    </View>
                     <Text style={[styles.timestamp, { color: colors.faint }]}>{Math.floor(segment.startMs / 60000)}:{String(Math.floor(segment.startMs / 1000) % 60).padStart(2, "0")}</Text>
                   </View>
                   <Text selectable style={[styles.segmentText, { color: colors.ink }]}>
@@ -317,7 +359,7 @@ export default function ConversationScreen() {
           </Pressable>
         </View>
       ) : null}
-    </ScrollView>
+    </KeyboardScreen>
   );
 }
 
@@ -347,8 +389,12 @@ const styles = StyleSheet.create({
   decisionRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
   decisionIcon: { width: 36, height: 36, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   decisionText: { flex: 1, fontSize: typeScale.body, lineHeight: 21 },
-  peopleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  peopleNames: { flex: 1, fontSize: typeScale.body, lineHeight: 21, fontWeight: "600" },
+  personRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
+  personAvatar: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  personInitial: { fontSize: typeScale.bodyLarge, fontWeight: "800" },
+  personCopy: { flex: 1 },
+  personName: { fontSize: typeScale.body, fontWeight: "800" },
+  personMeta: { fontSize: typeScale.caption, marginTop: 3 },
   tabContent: { paddingTop: spacing.xl },
   timeline: { marginTop: spacing.xl },
   timelineRow: { flexDirection: "row", gap: spacing.sm },
@@ -358,6 +404,7 @@ const styles = StyleSheet.create({
   segmentCard: { flex: 1, borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.sm },
   segmentMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.xs },
   speaker: { fontSize: 13, fontWeight: "800" },
+  speakerSource: { fontSize: 10, fontWeight: "600", marginTop: 1 },
   timestamp: { fontSize: 11, fontVariant: ["tabular-nums"] },
   segmentText: { fontSize: typeScale.body, lineHeight: 23 },
   askIntro: { alignItems: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },

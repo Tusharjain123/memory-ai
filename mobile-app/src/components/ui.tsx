@@ -207,7 +207,12 @@ export function SegmentedControl<T extends string>({
               pressed && { opacity: 0.65 },
             ]}
           >
-            <Text style={[styles.segmentText, { color: selected ? colors.ink : colors.muted }]}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              style={[styles.segmentText, { color: selected ? colors.ink : colors.muted }]}
+            >
               {option.label}
             </Text>
           </Pressable>

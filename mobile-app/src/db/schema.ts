@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "memory-ai.db";
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const MIGRATION_1 = `
 PRAGMA journal_mode = WAL;
@@ -106,4 +106,55 @@ CREATE TABLE IF NOT EXISTS user_profile (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+`;
+
+export const MIGRATION_5 = `
+ALTER TABLE people ADD COLUMN relationship TEXT;
+ALTER TABLE people ADD COLUMN email TEXT;
+ALTER TABLE people ADD COLUMN phone TEXT;
+ALTER TABLE people ADD COLUMN notes TEXT;
+ALTER TABLE people ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE people ADD COLUMN is_placeholder INTEGER NOT NULL DEFAULT 0;
+
+UPDATE people
+SET updated_at = last_interaction_at
+WHERE updated_at = '';
+
+DELETE FROM conversation_people
+WHERE rowid NOT IN (
+  SELECT MIN(rowid)
+  FROM conversation_people
+  GROUP BY conversation_id, speaker_label
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_people_speaker
+ON conversation_people(conversation_id, speaker_label);
+
+INSERT OR IGNORE INTO people
+  (id,name,last_interaction_at,updated_at,is_placeholder)
+SELECT
+  c.id || ':speaker:' || ts.speaker_label,
+  ts.speaker_label || ' · ' || c.id,
+  c.created_at,
+  c.created_at,
+  1
+FROM conversations c
+JOIN transcript_segments ts ON ts.conversation_id = c.id
+LEFT JOIN conversation_people cp
+  ON cp.conversation_id = c.id AND cp.speaker_label = ts.speaker_label
+WHERE cp.person_id IS NULL
+GROUP BY c.id, ts.speaker_label;
+
+INSERT OR IGNORE INTO conversation_people
+  (conversation_id,person_id,speaker_label)
+SELECT
+  c.id,
+  c.id || ':speaker:' || ts.speaker_label,
+  ts.speaker_label
+FROM conversations c
+JOIN transcript_segments ts ON ts.conversation_id = c.id
+LEFT JOIN conversation_people cp
+  ON cp.conversation_id = c.id AND cp.speaker_label = ts.speaker_label
+WHERE cp.person_id IS NULL
+GROUP BY c.id, ts.speaker_label;
 `;

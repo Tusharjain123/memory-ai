@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useCallback, useState } from "react";
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { listConversations, type ConversationListItem } from "../src/db/conversations";
 import { listPendingRecordings } from "../src/db/pendingRecordings";
@@ -58,7 +60,9 @@ function RecentHeading({ colors }: { colors: AppColors }) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useAppTheme();
+  const [question, setQuestion] = useState("");
   const [items, setItems] = useState<ConversationListItem[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,27 +75,39 @@ export default function HomeScreen() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   function record() { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/record"); }
+  function ask(): void {
+    const clean = question.trim();
+    if (!clean) return;
+    void Haptics.selectionAsync();
+    Keyboard.dismiss();
+    setQuestion("");
+    router.push({
+      pathname: "/search",
+      params: { question: clean, autoSubmit: "1" },
+    } as never);
+  }
 
   return (
     <View style={[styles.page, { backgroundColor: colors.background }]}>
       {!isDark ? <Image source={require("../assets/ambient-memory-bg.png")} resizeMode="cover" style={styles.ambientBackground} /> : null}
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => { setRefreshing(true); void load(); }} />}>
-        <View style={styles.searchRow}>
-          <Image
-            accessibilityLabel="Memory AI"
-            source={require("../assets/memory-ai-logo.png")}
-            resizeMode="cover"
-            style={[styles.brandLogo, { borderColor: colors.line }]}
-          />
-          <Pressable accessibilityRole="search" onPress={() => router.push("/search")}
-            style={[styles.search, { backgroundColor: colors.surface, borderColor: colors.line }]}>
-            <Ionicons name="search-outline" size={20} color={colors.muted} />
-            <Text style={[styles.searchText, { color: colors.muted }]}>Search your memories…</Text>
+        <View style={styles.headerRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="About Memory AI"
+            onPress={() => router.push("/about")}
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            <Image
+              source={require("../assets/memory-ai-logo.png")}
+              resizeMode="cover"
+              style={[styles.brandLogo, { borderColor: colors.line }]}
+            />
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Profile and settings" onPress={() => router.push("/account")}
             style={[styles.settings, { backgroundColor: colors.surface, borderColor: colors.line }]}>
-            <Ionicons name="person-outline" size={22} color={colors.accent} />
+            <Ionicons name="settings-outline" size={22} color={colors.accent} />
           </Pressable>
         </View>
 
@@ -122,13 +138,52 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.emptyVisual} accessibilityLabel="No recordings yet">
             <Image
-              source={require("../assets/empty-recordings.png")}
+              source={isDark
+                ? require("../assets/empty-recordings-dark.png")
+                : require("../assets/empty-recordings.png")}
               resizeMode="contain"
-              style={[styles.emptyImage, isDark && { borderColor: colors.line }]}
+              style={styles.emptyImage}
             />
           </View>
         )}
       </ScrollView>
+      <KeyboardStickyView
+        style={[
+          styles.composerWrap,
+          {
+            backgroundColor: colors.background,
+            borderTopColor: colors.line,
+            paddingBottom: Math.max(insets.bottom, spacing.md),
+          },
+        ]}
+      >
+        <View style={[styles.composer, { backgroundColor: colors.surface }, !isDark && shadows.floating]}>
+          <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
+          <TextInput
+            accessibilityLabel="Ask Memory from Home"
+            value={question}
+            onChangeText={setQuestion}
+            onSubmitEditing={ask}
+            placeholder="Ask anything about your memories…"
+            placeholderTextColor={colors.faint}
+            returnKeyType="send"
+            style={[styles.askInput, { color: colors.ink }]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send question"
+            disabled={!question.trim()}
+            onPress={ask}
+            style={({ pressed }) => [
+              styles.send,
+              { backgroundColor: question.trim() ? colors.ink : colors.surfaceMuted },
+              pressed && { transform: [{ scale: 0.93 }] },
+            ]}
+          >
+            <Ionicons name="arrow-up" size={20} color={question.trim() ? colors.background : colors.faint} />
+          </Pressable>
+        </View>
+      </KeyboardStickyView>
     </View>
   );
 }
@@ -136,11 +191,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, overflow: "hidden" },
   ambientBackground: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%", opacity: 0.9 },
-  content: { paddingHorizontal: spacing.lg, paddingTop: 58, paddingBottom: 70 },
-  searchRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
+  content: { paddingHorizontal: spacing.lg, paddingTop: 58, paddingBottom: 140 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   brandLogo: { width: 44, height: 44, borderRadius: 14, borderWidth: 1 },
-  search: { flex: 1, height: 52, borderRadius: radii.pill, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.md, ...shadows.card },
-  searchText: { fontSize: 14, flex: 1 },
   settings: { width: 52, height: 52, borderRadius: 26, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   eyebrow: { fontSize: 13, fontWeight: "700", marginTop: spacing.xxxl, marginBottom: 5 },
   heading: { fontSize: typeScale.title2, lineHeight: 34, fontWeight: "800", letterSpacing: -0.7, marginBottom: spacing.sm },
@@ -170,4 +223,8 @@ const styles = StyleSheet.create({
   memorySummary: { fontSize: 13, lineHeight: 19, marginTop: 5 },
   memoryBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.sm },
   memorySignals: { fontSize: 11 },
+  composerWrap: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  composer: { minHeight: 58, borderRadius: 22, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.md, paddingRight: 7, paddingVertical: 7 },
+  askInput: { flex: 1, minHeight: 44, fontSize: typeScale.body, paddingVertical: 10 },
+  send: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center" },
 });

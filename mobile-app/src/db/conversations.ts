@@ -22,10 +22,20 @@ export type ConversationDetail = ConversationListItem & {
   rawTranscript: string;
   cleanTranscript: string;
   romanHinglishTranscript: string;
-  participants: Array<{ name: string; speakerLabel: string }>;
+  participants: Array<{
+    personId: string;
+    name: string;
+    speakerLabel: string;
+    relationship: string | null;
+    email: string | null;
+    phone: string | null;
+    notes: string | null;
+    isPlaceholder: boolean;
+  }>;
   segments: Array<{
     id: string;
     speakerLabel: string;
+    speakerName: string | null;
     startMs: number;
     rawText: string;
     cleanText: string;
@@ -60,22 +70,51 @@ export async function saveConversation(
       result.language, result.durationMs, result.rawTranscript, result.cleanTranscript,
       result.romanHinglishTranscript, recordingUri, now, now,
     );
-    for (const person of result.participants) {
-      const personId = person.name.trim().toLocaleLowerCase();
-      await database.runAsync(
-        `INSERT INTO people (id,name,last_interaction_at) VALUES (?,?,?)
-         ON CONFLICT(name) DO UPDATE SET last_interaction_at=excluded.last_interaction_at`,
-        personId, person.name.trim(), now,
+    const speakerLabels = new Set([
+      ...result.segments.map((segment) => segment.speakerLabel),
+      ...result.participants.map((person) => person.speakerLabel),
+    ]);
+    for (const speakerLabel of speakerLabels) {
+      const participant = result.participants.find(
+        (person) => person.speakerLabel === speakerLabel,
       );
-      const stored = await database.getFirstAsync<{ id: string }>(
-        "SELECT id FROM people WHERE name = ? COLLATE NOCASE", person.name.trim(),
-      );
-      if (stored) {
+      const candidateName = participant?.name.trim() ?? "";
+      const hasKnownName =
+        Boolean(candidateName) && !/^speaker\s+\d+$/i.test(candidateName);
+      let personId: string;
+      if (hasKnownName) {
+        const stored = await database.getFirstAsync<{ id: string }>(
+          "SELECT id FROM people WHERE name = ? COLLATE NOCASE",
+          candidateName,
+        );
+        personId = stored?.id ?? randomUUID();
+        if (stored) {
+          await database.runAsync(
+            "UPDATE people SET last_interaction_at=?,updated_at=? WHERE id=?",
+            now, now, personId,
+          );
+        } else {
+          await database.runAsync(
+            `INSERT INTO people
+             (id,name,last_interaction_at,updated_at,is_placeholder)
+             VALUES (?,?,?,?,0)`,
+            personId, candidateName, now, now,
+          );
+        }
+      } else {
+        personId = randomUUID();
         await database.runAsync(
-          "INSERT INTO conversation_people VALUES (?,?,?)",
-          id, stored.id, person.speakerLabel,
+          `INSERT INTO people
+           (id,name,last_interaction_at,updated_at,is_placeholder)
+           VALUES (?,?,?,?,1)`,
+          personId, `${speakerLabel} · ${id}`, now, now,
         );
       }
+      await database.runAsync(
+        `INSERT OR IGNORE INTO conversation_people
+         (conversation_id,person_id,speaker_label) VALUES (?,?,?)`,
+        id, personId, speakerLabel,
+      );
     }
     for (const segment of result.segments) {
       const segmentId = storedEntityId(id, "segment", segment.id);
@@ -128,7 +167,9 @@ export async function listConversations(): Promise<ConversationListItem[]> {
     action_count: number; decision_count: number;
   }>(
     `SELECT c.id,c.title,c.summary,c.topics_json,c.duration_ms,c.created_at,
-      (SELECT GROUP_CONCAT(p.name, '|') FROM conversation_people cp
+      (SELECT GROUP_CONCAT(
+         CASE WHEN p.is_placeholder=1 THEN cp.speaker_label ELSE p.name END, '|'
+       ) FROM conversation_people cp
        JOIN people p ON p.id=cp.person_id WHERE cp.conversation_id=c.id) people_names,
       (SELECT COUNT(*) FROM action_items a WHERE a.conversation_id=c.id) action_count,
       (SELECT COUNT(*) FROM decisions d WHERE d.conversation_id=c.id) decision_count
@@ -187,8 +228,19 @@ export async function getConversation(id: string): Promise<ConversationDetail | 
   }>("SELECT * FROM conversations WHERE id=?", id);
   if (!row) return null;
   const [participants, segments, decisions, actions] = await Promise.all([
-    database.getAllAsync<{ name: string; speaker_label: string }>(
-      `SELECT p.name,cp.speaker_label FROM people p JOIN conversation_people cp
+    database.getAllAsync<{
+      person_id: string;
+      name: string;
+      speaker_label: string;
+      relationship: string | null;
+      email: string | null;
+      phone: string | null;
+      notes: string | null;
+      is_placeholder: number;
+    }>(
+      `SELECT p.id person_id,p.name,cp.speaker_label,p.relationship,p.email,
+              p.phone,p.notes,p.is_placeholder
+       FROM people p JOIN conversation_people cp
        ON cp.person_id=p.id WHERE cp.conversation_id=?`, id,
     ),
     database.getAllAsync<{
@@ -210,6 +262,9 @@ export async function getConversation(id: string): Promise<ConversationDetail | 
       id: string; task: string; owner: string | null; due_at: string | null; completed: number;
     }>("SELECT id,task,owner,due_at,completed FROM action_items WHERE conversation_id=?", id),
   ]);
+  const peopleBySpeaker = new Map(
+    participants.map((item) => [item.speaker_label, item] as const),
+  );
   return {
     id: row.id, title: row.title, mainGoal: row.main_goal, summary: row.summary,
     topics: JSON.parse(row.topics_json) as string[], language: row.language,
@@ -217,14 +272,26 @@ export async function getConversation(id: string): Promise<ConversationDetail | 
     cleanTranscript: row.clean_transcript,
     romanHinglishTranscript: row.roman_hinglish_transcript, createdAt: row.created_at,
     recordingUri: row.recording_uri,
-    people: participants.map((item) => item.name),
+    people: participants.map((item) =>
+      item.is_placeholder ? item.speaker_label : item.name
+    ),
     actionItemCount: actions.length,
     decisionCount: decisions.length,
     participants: participants.map((item) => ({
-      name: item.name, speakerLabel: item.speaker_label,
+      personId: item.person_id,
+      name: item.is_placeholder ? item.speaker_label : item.name,
+      speakerLabel: item.speaker_label,
+      relationship: item.relationship,
+      email: item.email,
+      phone: item.phone,
+      notes: item.notes,
+      isPlaceholder: item.is_placeholder === 1,
     })),
     segments: segments.map((item) => ({
       id: item.id, speakerLabel: item.speaker_label,
+      speakerName: peopleBySpeaker.get(item.speaker_label)?.is_placeholder
+        ? null
+        : peopleBySpeaker.get(item.speaker_label)?.name ?? null,
       startMs: item.start_ms,
       rawText: item.raw_text,
       cleanText: item.clean_text,

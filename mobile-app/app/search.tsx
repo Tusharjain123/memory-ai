@@ -1,9 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -12,7 +11,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { AskResponse } from "../src/contracts";
 import { askGlobalWithContext, retrieveMemories } from "../src/services/ai";
 import type { SearchMemory } from "../src/db/insights";
@@ -28,14 +28,19 @@ const SUGGESTIONS = [
 
 export default function AskMemoryScreen() {
   const router = useRouter();
+  const { question: routedQuestion, autoSubmit } = useLocalSearchParams<{
+    question?: string;
+    autoSubmit?: string;
+  }>();
   const { colors, isDark } = useAppTheme();
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(routedQuestion ?? "");
   const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
   const [answer, setAnswer] = useState<AskResponse | null>(null);
   const [memories, setMemories] = useState<SearchMemory[]>([]);
   const [recentQuestions, setRecentQuestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const handledRoutedQuestion = useRef(false);
 
   async function ask(value = question): Promise<void> {
     const clean = value.trim();
@@ -58,6 +63,18 @@ export default function AskMemoryScreen() {
     }
   }
 
+  useEffect(() => {
+    if (
+      handledRoutedQuestion.current ||
+      autoSubmit !== "1" ||
+      !routedQuestion?.trim()
+    ) {
+      return;
+    }
+    handledRoutedQuestion.current = true;
+    void ask(routedQuestion);
+  }, [autoSubmit, routedQuestion]);
+
   function reset(): void {
     setQuestion("");
     setSubmittedQuestion(null);
@@ -67,10 +84,7 @@ export default function AskMemoryScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.page, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={[styles.page, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -208,7 +222,9 @@ export default function AskMemoryScreen() {
         )}
       </ScrollView>
 
-      <View style={[styles.composerWrap, { backgroundColor: colors.background, borderTopColor: colors.line }]}>
+      <KeyboardStickyView
+        style={[styles.composerWrap, { backgroundColor: colors.background, borderTopColor: colors.line }]}
+      >
         <View style={[styles.composer, { backgroundColor: colors.surface }, !isDark && shadows.floating]}>
           <TextInput
             accessibilityLabel="Ask Memory"
@@ -236,8 +252,8 @@ export default function AskMemoryScreen() {
             <Ionicons name="arrow-up" size={20} color={question.trim() && !loading ? colors.background : colors.faint} />
           </Pressable>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardStickyView>
+    </View>
   );
 }
 
@@ -281,7 +297,7 @@ const styles = StyleSheet.create({
   sourceText: { fontSize: 12, lineHeight: 17, marginTop: 5 },
   newQuestion: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: spacing.xl },
   newQuestionText: { fontSize: 14, fontWeight: "800" },
-  composerWrap: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: Platform.OS === "ios" ? 24 : spacing.sm },
+  composerWrap: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: Platform.OS === "ios" ? 32 : spacing.lg },
   composer: { minHeight: 56, maxHeight: 112, borderRadius: 22, flexDirection: "row", alignItems: "flex-end", paddingLeft: spacing.md, paddingRight: 6, paddingVertical: 6 },
   input: { flex: 1, minHeight: 44, maxHeight: 96, fontSize: typeScale.body, lineHeight: 21, paddingTop: 11, paddingBottom: 10 },
   send: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center" },
