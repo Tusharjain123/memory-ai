@@ -103,7 +103,7 @@ export default function RecordScreen() {
     if (status !== "recording" || recorderState.metering === undefined) return;
     const level = normalizeMetering(recorderState.metering);
     setLevels((current) => nextMeterLevels(current, level));
-  }, [recorderState.durationMillis, recorderState.metering, status]);
+  }, [recorderState, status]);
   useEffect(() => () => reset(), [reset]);
   useEffect(() => {
     if (status !== "recording" && status !== "processing") {
@@ -263,36 +263,57 @@ export default function RecordScreen() {
         </Text>
       </View>
       <View style={styles.visualArea} accessibilityLiveRegion="polite">
-        <Animated.View
-          style={[
-            styles.pulseOuter,
-            { borderColor: colors.accentSoft },
-            {
-              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.65] }),
-              transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.2] }) }],
-            },
-          ]}
-          pointerEvents="none"
-        />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={status === "idle" || status === "error" ? "Begin recording" : undefined}
-          disabled={starting || processing || active}
-          onPress={() => {
-            if (status === "idle" || status === "error") void start();
-          }}
-          style={({ pressed }) => [
-            styles.recordOrb,
-            { backgroundColor: processing ? colors.sageSoft : colors.accentSoft, borderColor: colors.surface },
-            pressed && (status === "idle" || status === "error") && { opacity: 0.85, transform: [{ scale: 0.97 }] },
-          ]}
-        >
-          <Ionicons
-            name={processing ? "sparkles" : starting ? "hourglass" : status === "paused" ? "pause" : "mic"}
-            size={38}
-            color={processing ? colors.sage : colors.accent}
+        <View style={styles.orbStage}>
+          <Animated.View
+            style={[
+              styles.pulseOuter,
+              { borderColor: colors.accentSoft },
+              {
+                opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.65] }),
+                transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.2] }) }],
+              },
+            ]}
+            pointerEvents="none"
           />
-        </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              status === "recording"
+                ? "Pause recording"
+                : status === "paused"
+                  ? "Resume recording"
+                  : status === "idle" || status === "error"
+                    ? "Begin recording"
+                    : undefined
+            }
+            disabled={starting || processing}
+            onPress={() => {
+              if (status === "idle" || status === "error") void start();
+              else if (active) void togglePause();
+            }}
+            style={({ pressed }) => [
+              styles.recordOrb,
+              { backgroundColor: processing ? colors.sageSoft : colors.accentSoft, borderColor: colors.surface },
+              pressed && !starting && !processing && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+            ]}
+          >
+            <Ionicons
+              name={
+                processing
+                  ? "sparkles"
+                  : starting
+                    ? "hourglass"
+                    : status === "paused"
+                      ? "play"
+                      : status === "recording"
+                        ? "pause"
+                        : "mic"
+              }
+              size={38}
+              color={processing ? colors.sage : colors.accent}
+            />
+          </Pressable>
+        </View>
         <Text accessibilityLabel={`Recording time ${time(recorderState.durationMillis)}`} style={[styles.timer, { color: colors.ink }]}>
           {time(recorderState.durationMillis)}
         </Text>
@@ -396,7 +417,8 @@ const styles = StyleSheet.create({
   title: { fontSize: typeScale.title1, lineHeight: 40, fontWeight: "800", letterSpacing: -1, textAlign: "center", marginTop: spacing.lg },
   subtitle: { maxWidth: 320, fontSize: typeScale.body, lineHeight: 22, textAlign: "center", marginTop: spacing.xs },
   visualArea: { flex: 1, minHeight: 300, alignItems: "center", justifyContent: "center" },
-  pulseOuter: { position: "absolute", width: 132, height: 132, borderRadius: 66, borderWidth: 22, top: "20%" },
+  orbStage: { width: 160, height: 160, alignItems: "center", justifyContent: "center" },
+  pulseOuter: { position: "absolute", width: 132, height: 132, borderRadius: 66, borderWidth: 22 },
   recordOrb: { width: 112, height: 112, borderRadius: 56, borderWidth: 10, alignItems: "center", justifyContent: "center", ...shadows.floating },
   timer: { fontSize: 44, fontWeight: "400", letterSpacing: -1.2, fontVariant: ["tabular-nums"], marginTop: spacing.lg },
   status: { fontSize: 13, marginTop: spacing.xs },
