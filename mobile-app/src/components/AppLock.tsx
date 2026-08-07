@@ -2,11 +2,17 @@ import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { authenticateApp, isBiometricLockEnabled } from "../services/privacy";
+import { useRecordingStore } from "../store/useRecordingStore";
 import { radii, spacing, typeScale, useAppTheme } from "../theme";
 
 export function AppLock({ children }: { children: React.ReactNode }) {
   const { colors } = useAppTheme();
+  const recordingStatus = useRecordingStore((state) => state.status);
   const [locked, setLocked] = useState<boolean | null>(null);
+  const recordingActive =
+    recordingStatus === "recording" ||
+    recordingStatus === "paused" ||
+    recordingStatus === "processing";
 
   async function check(): Promise<void> {
     const enabled = await isBiometricLockEnabled();
@@ -21,13 +27,22 @@ export function AppLock({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void check();
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "background") void isBiometricLockEnabled().then(setLocked);
+      if (state !== "background") return;
+      const status = useRecordingStore.getState().status;
+      if (status === "recording" || status === "paused" || status === "processing") {
+        return;
+      }
+      void isBiometricLockEnabled().then(setLocked);
     });
     return () => subscription.remove();
   }, []);
 
+  useEffect(() => {
+    if (recordingActive && locked) setLocked(false);
+  }, [locked, recordingActive]);
+
   if (locked === null) return <View style={[styles.page, { backgroundColor: colors.background }]} />;
-  if (locked) {
+  if (locked && !recordingActive) {
     return (
       <View style={[styles.page, { backgroundColor: colors.background }]}>
         <View style={[styles.mark, { backgroundColor: colors.sageSoft }]}>

@@ -37,15 +37,24 @@ export class OllamaService {
             role: "system",
             content: [
               "Return valid JSON only, with no prose or markdown.",
-              "Extract faithful structured meeting memory. Preserve Hindi-English code switching.",
-              "Never invent names, owners, dates, decisions, or tasks.",
-              "Return Roman Hinglish alongside cleaned text. Segment IDs and item IDs must be unique strings.",
+              "Extract faithful structured meeting memory from the transcript utterances.",
+              "Preserve Hindi-English code switching and speaker meaning exactly.",
+              "Never invent names, owners, dates, decisions, tasks, or spoken words.",
+              "cleanText / cleanTranscript: fix only obvious ASR typos, casing, and punctuation. Do not paraphrase, summarize, reorder, or add words.",
+              "romanHinglishText / romanHinglishTranscript: romanize Hindi words faithfully into Latin script; keep English words as English; do not invent content.",
+              "Produce one segments entry per input utterance, in the same order, keeping the same speakers and timing.",
+              "Segment IDs and item IDs must be unique strings.",
               `Required JSON Schema: ${JSON.stringify(understandingJsonSchema)}`,
             ].join("\n"),
           },
           {
             role: "user",
-            content: `Language: ${transcript.language}\nTranscript:\n${speakerTranscript || transcript.rawTranscript}`,
+            content: [
+              `Detected languages: ${transcript.language}`,
+              "Keep cleaned and Hinglish text faithful to each utterance below.",
+              "Transcript:",
+              speakerTranscript || transcript.rawTranscript,
+            ].join("\n"),
           },
         ],
     });

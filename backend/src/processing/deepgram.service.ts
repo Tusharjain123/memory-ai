@@ -13,6 +13,11 @@ export type DeepgramResult = {
   }>;
 };
 
+type DeepgramConfig = {
+  model: string;
+  language: string;
+};
+
 @Injectable()
 export class DeepgramService {
   async transcribe(audioPath: string, mimetype: string): Promise<DeepgramResult> {
@@ -21,10 +26,13 @@ export class DeepgramService {
       throw new ServiceUnavailableException("Transcription is not configured");
     }
     const audio = await readFile(audioPath);
+    const config = resolveDeepgramConfig();
     const url = new URL("https://api.deepgram.com/v1/listen");
-    url.searchParams.set("model", "nova-3");
-    url.searchParams.set("language", "multi");
+    url.searchParams.set("model", config.model);
+    url.searchParams.set("language", config.language);
     url.searchParams.set("smart_format", "true");
+    url.searchParams.set("punctuate", "true");
+    url.searchParams.set("diarize", "true");
     url.searchParams.set("diarize_model", "latest");
     url.searchParams.set("utterances", "true");
     const response = await fetch(url, {
@@ -44,7 +52,10 @@ export class DeepgramService {
       results?: {
         channels?: Array<{
           detected_language?: string;
-          alternatives?: Array<{ transcript?: string }>;
+          alternatives?: Array<{
+            transcript?: string;
+            languages?: string[];
+          }>;
         }>;
         utterances?: Array<{
           speaker?: number;
@@ -55,9 +66,10 @@ export class DeepgramService {
       };
     };
     const channel = payload.results?.channels?.[0];
+    const alternative = channel?.alternatives?.[0];
     return {
-      rawTranscript: channel?.alternatives?.[0]?.transcript ?? "",
-      language: channel?.detected_language ?? "multi",
+      rawTranscript: alternative?.transcript ?? "",
+      language: resolveDetectedLanguage(channel, alternative, config.language),
       durationMs: Math.round((payload.metadata?.duration ?? 0) * 1000),
       utterances: (payload.results?.utterances ?? []).map((item) => ({
         speaker: item.speaker ?? 0,
@@ -74,4 +86,34 @@ export class DeepgramService {
       ? configured
       : 300_000;
   }
+}
+
+export function resolveDeepgramConfig(): DeepgramConfig {
+  const model = process.env.DEEPGRAM_MODEL?.trim() || "nova-3";
+  const language = process.env.DEEPGRAM_LANGUAGE?.trim() || "multi";
+  return { model, language };
+}
+
+export function resolveDetectedLanguage(
+  channel:
+    | {
+        detected_language?: string;
+      }
+    | undefined,
+  alternative:
+    | {
+        languages?: string[];
+      }
+    | undefined,
+  fallback: string,
+): string {
+  const languages = (alternative?.languages ?? [])
+    .map((code) => code.trim())
+    .filter(Boolean);
+  if (languages.length) {
+    return [...new Set(languages)].join("+");
+  }
+  const detected = channel?.detected_language?.trim();
+  if (detected) return detected;
+  return fallback;
 }

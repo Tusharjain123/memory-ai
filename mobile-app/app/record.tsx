@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Animated, Easing, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -16,6 +16,10 @@ import { processRecording } from "../src/services/processing";
 import { persistRecording } from "../src/services/recordings";
 import { useRecordingStore } from "../src/store/useRecordingStore";
 import { nextMeterLevels, normalizeMetering } from "../src/utils/audioMeter";
+import {
+  createMuffledDetectorState,
+  nextMuffledDetectorState,
+} from "../src/utils/muffledDetector";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 function time(ms: number): string {
@@ -29,6 +33,10 @@ const START_TIMEOUT_MS = 8_000;
 const recordingOptions = {
   ...RecordingPresets.HIGH_QUALITY!,
   isMeteringEnabled: true,
+  android: {
+    ...RecordingPresets.HIGH_QUALITY!.android,
+    audioSource: "voice_recognition" as const,
+  },
 };
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -77,6 +85,8 @@ export default function RecordScreen() {
   const startingRef = useRef(false);
   const [levels, setLevels] = useState(EMPTY_LEVELS);
   const [starting, setStarting] = useState(false);
+  const [muffledHint, setMuffledHint] = useState(false);
+  const muffledRef = useRef(createMuffledDetectorState());
 
   useEffect(() => {
     void (async () => {
@@ -87,7 +97,8 @@ export default function RecordScreen() {
           playsInSilentMode: true,
           interruptionMode: "doNotMix",
           interruptionModeAndroid: "doNotMix",
-          shouldPlayInBackground: false,
+          shouldPlayInBackground: true,
+          allowsBackgroundRecording: true,
           shouldRouteThroughEarpiece: false,
         });
       } catch {
@@ -100,9 +111,17 @@ export default function RecordScreen() {
     setElapsedMs(recorderState.durationMillis);
   }, [recorderState.durationMillis, setElapsedMs]);
   useEffect(() => {
-    if (status !== "recording" || recorderState.metering === undefined) return;
+    if (status !== "recording") {
+      muffledRef.current = createMuffledDetectorState();
+      setMuffledHint(false);
+      return;
+    }
+    if (recorderState.metering === undefined) return;
     const level = normalizeMetering(recorderState.metering);
     setLevels((current) => nextMeterLevels(current, level));
+    const next = nextMuffledDetectorState(muffledRef.current, level);
+    muffledRef.current = next;
+    setMuffledHint(next.muffled);
   }, [recorderState, status]);
   useEffect(() => () => reset(), [reset]);
   useEffect(() => {
@@ -138,13 +157,18 @@ export default function RecordScreen() {
         return;
       }
 
+      if (Platform.OS === "android" && Platform.Version >= 33) {
+        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      }
+
       await withTimeout(
         setAudioModeAsync({
           allowsRecording: true,
           playsInSilentMode: true,
           interruptionMode: "doNotMix",
           interruptionModeAndroid: "doNotMix",
-          shouldPlayInBackground: false,
+          shouldPlayInBackground: true,
+          allowsBackgroundRecording: true,
           shouldRouteThroughEarpiece: false,
         }),
         START_TIMEOUT_MS,
@@ -329,6 +353,11 @@ export default function RecordScreen() {
                   : "No audio leaves your phone until you finish"}
         </Text>
         <Waveform levels={levels} active={status === "recording"} color={colors.accent} faint={colors.faint} />
+        {muffledHint && status === "recording" ? (
+          <Text style={[styles.muffledHint, { color: colors.muted }]}>
+            Hard to hear — is the phone covered or in a pocket?
+          </Text>
+        ) : null}
       </View>
 
       {processing ? (
@@ -424,6 +453,13 @@ const styles = StyleSheet.create({
   status: { fontSize: 13, marginTop: spacing.xs },
   waveform: { width: "100%", height: 70, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, marginTop: spacing.xl },
   waveBar: { width: 4, borderRadius: 3 },
+  muffledHint: {
+    maxWidth: 280,
+    fontSize: typeScale.caption,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: spacing.sm,
+  },
   processingCard: { borderRadius: radii.lg, padding: spacing.lg, gap: spacing.md, marginBottom: spacing.lg },
   processingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   processingText: { fontSize: 14, fontWeight: "600" },

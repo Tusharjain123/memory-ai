@@ -84,10 +84,19 @@ describe("OllamaService", () => {
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(request.body)) as {
       format: { type: string; required: string[]; properties: Record<string, unknown> };
+      messages: Array<{ role: string; content: string }>;
     };
     expect(body.format.type).toBe("object");
     expect(body.format.required).toContain("romanHinglishTranscript");
     expect(body.format.properties).toHaveProperty("actionItems");
+    const system = body.messages.find((message) => message.role === "system")?.content ?? "";
+    const user = body.messages.find((message) => message.role === "user")?.content ?? "";
+    expect(system).toContain("fix only obvious ASR typos");
+    expect(system).toContain("Do not paraphrase, summarize, reorder, or add words");
+    expect(system).toContain("romanize Hindi words faithfully");
+    expect(system).toContain("Produce one segments entry per input utterance");
+    expect(user).toContain("Detected languages: hi");
+    expect(user).toContain("Keep cleaned and Hinglish text faithful");
   });
 
   it("rejects malformed model output instead of persisting it", async () => {

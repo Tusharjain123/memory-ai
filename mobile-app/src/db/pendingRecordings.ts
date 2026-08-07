@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { randomUUID } from "expo-crypto";
 import { getDatabase } from "./database";
 
