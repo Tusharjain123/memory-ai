@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "expo start",
     "android": "expo run:android",
-    "build:preview": "pnpx eas-cli build --platform android --profile preview",
-    "build:production": "pnpx eas-cli build --platform android --profile production",
+    "build:preview": "pnpx eas-cli@latest build --platform android --profile preview",
+    "build:production": "pnpx eas-cli@latest build --platform android --profile production",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "tsc -p tsconfig.json --noEmit",
@@ -43,8 +43,14 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@react-native/metro-config": "0.81.5",
     "@types/react": "~19.1.17",
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "@react-native/metro-config": "0.81.5"
+    }
   }
 }
