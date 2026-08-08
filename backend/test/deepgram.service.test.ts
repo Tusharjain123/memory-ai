@@ -41,7 +41,7 @@ describe("DeepgramService", () => {
       expect(url.searchParams.get("model")).toBe("nova-3");
       expect(url.searchParams.get("language")).toBe("multi");
       expect(url.searchParams.get("punctuate")).toBe("true");
-      expect(url.searchParams.get("diarize")).toBe("true");
+      expect(url.searchParams.has("diarize")).toBe(false);
       expect(url.searchParams.get("diarize_model")).toBe("latest");
       expect(url.searchParams.get("smart_format")).toBe("true");
       expect(url.searchParams.get("utterances")).toBe("true");
@@ -52,6 +52,29 @@ describe("DeepgramService", () => {
       );
       expect(result.language).toBe("multi");
       expect(result.utterances[0]?.text).toBe("Aaj deploy karenge.");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("includes Deepgram error body when transcription fails", async () => {
+    process.env.DEEPGRAM_API_KEY = "test-key";
+    const directory = await mkdtemp(join(tmpdir(), "memory-ai-test-"));
+    const audioPath = join(directory, "sample.m4a");
+    await writeFile(audioPath, "fake audio");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response("Cannot set both diarize and diarize_model", {
+        status: 400,
+        headers: { "Content-Type": "text/plain" },
+      }),
+    ));
+
+    try {
+      await expect(
+        new DeepgramService().transcribe(audioPath, "audio/mp4"),
+      ).rejects.toThrow(
+        "Transcription failed (400): Cannot set both diarize and diarize_model",
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

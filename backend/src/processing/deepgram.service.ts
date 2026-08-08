@@ -32,7 +32,7 @@ export class DeepgramService {
     url.searchParams.set("language", config.language);
     url.searchParams.set("smart_format", "true");
     url.searchParams.set("punctuate", "true");
-    url.searchParams.set("diarize", "true");
+    // diarize_model enables diarization; do not also set diarize=true (Deepgram rejects both).
     url.searchParams.set("diarize_model", "latest");
     url.searchParams.set("utterances", "true");
     const response = await fetch(url, {
@@ -45,7 +45,12 @@ export class DeepgramService {
       signal: AbortSignal.timeout(this.timeoutMs()),
     });
     if (!response.ok) {
-      throw new ServiceUnavailableException(`Transcription failed (${response.status})`);
+      const detail = (await response.text()).trim().slice(0, 300);
+      throw new ServiceUnavailableException(
+        detail
+          ? `Transcription failed (${response.status}): ${detail}`
+          : `Transcription failed (${response.status})`,
+      );
     }
     const payload = (await response.json()) as {
       metadata?: { duration?: number };
