@@ -152,11 +152,12 @@ export class ProcessingController {
       throw new BadRequestException("filename, audio mimetype, and totalBytes are required");
     }
     try {
+      const durationMs = parseDurationMs(body);
       return await this.uploads.initSession({
         filename,
         mimetype,
         totalBytes,
-        durationMs: parseDurationMs(body),
+        ...(durationMs != null ? { durationMs } : {}),
         keyterms: parseKeyterms(
           "keyterms" in body && body.keyterms != null
             ? typeof body.keyterms === "string"

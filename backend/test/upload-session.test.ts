@@ -1,13 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MAX_UPLOAD_BYTES } from "../src/processing/audio-limits.js";
+import { UploadSessionService } from "../src/processing/upload-session.service.js";
 
 vi.mock("../src/processing/audio-probe.js", () => ({
   probeAudio: vi.fn().mockResolvedValue({ durationSec: 0, channels: null }),
 }));
-
-const { UploadSessionService } = await import("../src/processing/upload-session.service.js");
 
 describe("UploadSessionService", () => {
   const service = new UploadSessionService();

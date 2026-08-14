@@ -160,7 +160,7 @@ export class OllamaService {
   }
 
   async embed(
-    understanding: Understanding,
+    understanding: Pick<Understanding, "title" | "summary" | "topics" | "segments">,
   ): Promise<EmbeddingInsight[]> {
     const sources = [
       {

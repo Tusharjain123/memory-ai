@@ -11,7 +11,8 @@ const baseUnderstanding: Understanding = {
   romanHinglishTranscript: "Aaj deploy karenge.",
   participants: [],
   decisions: [],
-  actionItems: [],
+  commitments: [],
+  memoryCandidates: [],
   segments: [{
     id: "invented-id",
     speakerLabel: "Wrong speaker",
