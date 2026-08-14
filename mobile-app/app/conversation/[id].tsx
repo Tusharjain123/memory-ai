@@ -15,18 +15,28 @@ import {
   deleteConversation,
   deleteRecording,
   getConversation,
-  setActionItemCompleted,
   type ConversationDetail,
 } from "../../src/db/conversations";
+import { setCommitmentStatus } from "../../src/db/commitments";
 import { askWithContext, retrieveMemories } from "../../src/services/ai";
 import { exportConversation } from "../../src/services/privacy";
+import { EvidenceCard } from "../../src/components/EvidenceCard";
+import { RecordingPlayer } from "../../src/components/RecordingPlayer";
 import { KeyboardScreen } from "../../src/components/KeyboardScreen";
 import { InlineState, PrivacyPill, SectionHeader, SegmentedControl, SoftCard } from "../../src/components/ui";
-import { formatDuration, relativeDate } from "../../src/utils/format";
+import { useClipPlayer } from "../../src/hooks/useClipPlayer";
+import { formatDuration, formatTimestamp, relativeDate } from "../../src/utils/format";
 import { radii, spacing, typeScale, useAppTheme } from "../../src/theme";
 
 type DetailTab = "overview" | "transcript" | "ask" | "more";
 type TranscriptMode = "raw" | "clean" | "roman";
+
+function directionLabel(direction: string): string {
+  if (direction === "i_owe") return "You promised";
+  if (direction === "they_owe") return "They promised";
+  if (direction === "mutual") return "Mutual";
+  return "Commitment";
+}
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -37,7 +47,10 @@ export default function ConversationScreen() {
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("raw");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
+  const [answerCitations, setAnswerCitations] = useState<string[]>([]);
   const [asking, setAsking] = useState(false);
+  const [activeClipMs, setActiveClipMs] = useState<number | null>(null);
+  const clip = useClipPlayer(item?.recordingUri);
 
   useFocusEffect(useCallback(() => {
     if (id) void getConversation(id).then(setItem);
@@ -84,9 +97,12 @@ export default function ConversationScreen() {
     if (!question.trim() || asking) return;
     setAsking(true);
     setAnswer(null);
+    setAnswerCitations([]);
     try {
       const context = await retrieveMemories(question, item!.id);
-      setAnswer((await askWithContext(question, context)).answer);
+      const response = await askWithContext(question, context);
+      setAnswer(response.answer);
+      setAnswerCitations(response.citations);
     } catch (cause) {
       Alert.alert("Memory couldn’t answer", cause instanceof Error ? cause.message : "Try again in a moment.");
     } finally {
@@ -94,13 +110,27 @@ export default function ConversationScreen() {
     }
   }
 
-  async function toggleAction(actionId: string, completed: boolean): Promise<void> {
+  async function cycleCommitment(commitmentId: string, status: string): Promise<void> {
+    const next =
+      status === "proposed" ? "confirmed"
+        : status === "confirmed" ? "completed"
+          : status === "completed" ? "proposed"
+            : "proposed";
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await setActionItemCompleted(actionId, completed);
+    await setCommitmentStatus(commitmentId, next as "proposed" | "confirmed" | "completed");
     setItem((current) => current ? {
       ...current,
-      actionItems: current.actionItems.map((action) => action.id === actionId ? { ...action, completed } : action),
+      commitments: current.commitments.map((commitment) =>
+        commitment.id === commitmentId ? { ...commitment, status: next } : commitment),
+      actionItems: current.actionItems.map((action) =>
+        action.id === commitmentId ? { ...action, completed: next === "completed" } : action),
     } : current);
+  }
+
+  function playEvidence(startMs: number | null): void {
+    if (startMs == null) return;
+    setActiveClipMs(startMs);
+    void clip.playFrom(startMs);
   }
 
   function openPerson(personId: string, speakerLabel: string): void {
@@ -110,7 +140,18 @@ export default function ConversationScreen() {
     } as never);
   }
 
-  const pendingActions = item.actionItems.filter((action) => !action.completed);
+  const openCommitments = item.commitments.filter(
+    (commitment) =>
+      commitment.status !== "completed"
+      && commitment.status !== "cancelled"
+      && commitment.approvalStatus !== "rejected",
+  );
+  const visibleDecisions = item.decisions.filter(
+    (decision) => decision.approvalStatus !== "rejected",
+  );
+  const citationSegments = item.segments.filter((segment) =>
+    answerCitations.some((citation) => citation.includes(segment.id) || citation.endsWith(segment.id)),
+  );
 
   return (
     <KeyboardScreen
@@ -124,6 +165,23 @@ export default function ConversationScreen() {
           <PrivacyPill compact />
         </View>
         <Text accessibilityRole="header" style={[styles.title, { color: colors.ink }]}>{item.title}</Text>
+        {item.recordingUri ? (
+          <View style={styles.player}>
+            <RecordingPlayer player={clip} fallbackDurationMs={item.durationMs} />
+          </View>
+        ) : null}
+        {item.pendingReviewCount > 0 ? (
+          <Pressable
+            onPress={() => router.push(`/review/${item.id}` as never)}
+            style={[styles.reviewBanner, { backgroundColor: colors.accentSoft, borderColor: colors.line }]}
+          >
+            <Ionicons name="shield-checkmark-outline" size={18} color={colors.accent} />
+            <Text style={[styles.reviewBannerText, { color: colors.ink }]}>
+              {item.pendingReviewCount} memories waiting for your approval
+            </Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.accent} />
+          </Pressable>
+        ) : null}
         {item.topics.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topics}>
             {item.topics.map((topic) => (
@@ -164,42 +222,81 @@ export default function ConversationScreen() {
             ) : null}
           </SoftCard>
 
-          <SectionHeader title={`Action items${pendingActions.length ? ` · ${pendingActions.length} open` : ""}`} />
+          <SectionHeader title={`Commitments${openCommitments.length ? ` · ${openCommitments.length} open` : ""}`} />
           <SoftCard>
-            {item.actionItems.length ? item.actionItems.map((action, index) => (
+            {item.commitments.length ? item.commitments.map((commitment, index) => (
               <Pressable
-                key={action.id}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: action.completed }}
-                accessibilityLabel={`${action.task}${action.owner ? `, owned by ${action.owner}` : ""}`}
-                onPress={() => void toggleAction(action.id, !action.completed)}
+                key={commitment.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${commitment.text}. ${directionLabel(commitment.direction)}. Status ${commitment.status}`}
+                onPress={() => void cycleCommitment(commitment.id, commitment.status)}
                 style={({ pressed }) => [
                   styles.actionRow,
                   index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
                   pressed && { opacity: 0.55 },
                 ]}
               >
-                <View style={[styles.checkbox, { borderColor: action.completed ? colors.sage : colors.faint }, action.completed && { backgroundColor: colors.sage }]}>
-                  {action.completed ? <Ionicons name="checkmark" size={15} color={colors.background} /> : null}
+                <View style={[
+                  styles.checkbox,
+                  { borderColor: commitment.status === "completed" ? colors.sage : colors.faint },
+                  commitment.status === "completed" && { backgroundColor: colors.sage },
+                ]}>
+                  {commitment.status === "completed"
+                    ? <Ionicons name="checkmark" size={15} color={colors.background} />
+                    : commitment.status === "confirmed"
+                      ? <Ionicons name="ellipse" size={10} color={colors.accent} />
+                      : null}
                 </View>
                 <View style={styles.actionCopy}>
-                  <Text style={[styles.actionText, { color: action.completed ? colors.faint : colors.ink, textDecorationLine: action.completed ? "line-through" : "none" }]}>{action.task}</Text>
-                  {action.owner || action.dueAt ? (
-                    <Text style={[styles.actionMeta, { color: colors.muted }]}>{[action.owner, action.dueAt].filter(Boolean).join(" · ")}</Text>
+                  <Text style={[styles.actionMeta, { color: colors.accent }]}>
+                    {directionLabel(commitment.direction)}
+                    {commitment.approvalStatus === "pending" ? " · pending review" : ""}
+                  </Text>
+                  <Text style={[
+                    styles.actionText,
+                    {
+                      color: commitment.status === "completed" ? colors.faint : colors.ink,
+                      textDecorationLine: commitment.status === "completed" ? "line-through" : "none",
+                    },
+                  ]}>{commitment.text}</Text>
+                  {commitment.ownerName || commitment.dueAt ? (
+                    <Text style={[styles.actionMeta, { color: colors.muted }]}>
+                      {[commitment.ownerName, commitment.dueAt].filter(Boolean).join(" · ")}
+                    </Text>
                   ) : null}
+                  <EvidenceCard
+                    quote={commitment.quote}
+                    speakerLabel={commitment.speakerLabel}
+                    startMs={commitment.startMs}
+                    confidence={commitment.confidence}
+                    playing={clip.playing && clip.mode === "clip" && activeClipMs === commitment.startMs}
+                    available={clip.available}
+                    onPlay={() => playEvidence(commitment.startMs)}
+                  />
                 </View>
               </Pressable>
-            )) : <InlineState icon="checkmark-circle-outline" title="No action items" body="Nothing from this conversation needs your attention." />}
+            )) : <InlineState icon="checkmark-done-outline" title="No commitments" body="Nothing was promised in this conversation." />}
           </SoftCard>
 
-          <SectionHeader title={`Decisions · ${item.decisions.length}`} />
+          <SectionHeader title={`Decisions · ${visibleDecisions.length}`} />
           <SoftCard>
-            {item.decisions.length ? item.decisions.map((decision, index) => (
+            {visibleDecisions.length ? visibleDecisions.map((decision, index) => (
               <View key={decision.id} style={[styles.decisionRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }]}>
                 <View style={[styles.decisionIcon, { backgroundColor: colors.sageSoft }]}>
                   <Ionicons name="git-branch-outline" size={17} color={colors.sage} />
                 </View>
-                <Text style={[styles.decisionText, { color: colors.ink }]}>{decision.text}</Text>
+                <View style={styles.actionCopy}>
+                  <Text style={[styles.decisionText, { color: colors.ink }]}>{decision.text}</Text>
+                  <EvidenceCard
+                    quote={decision.quote}
+                    speakerLabel={decision.speakerLabel}
+                    startMs={decision.startMs}
+                    confidence={decision.confidence}
+                    playing={clip.playing && clip.mode === "clip" && activeClipMs === decision.startMs}
+                    available={clip.available}
+                    onPlay={() => playEvidence(decision.startMs)}
+                  />
+                </View>
               </View>
             )) : <InlineState icon="git-branch-outline" title="No decisions captured" body="Memory didn’t detect a final decision here." />}
           </SoftCard>
@@ -207,7 +304,7 @@ export default function ConversationScreen() {
           <SectionHeader
             title="People"
             {...(item.participants.length
-              ? { action: "Edit", onAction: () => router.push("/people") }
+              ? { action: "All", onAction: () => router.push("/people") }
               : {})}
           />
           <SoftCard>
@@ -215,7 +312,7 @@ export default function ConversationScreen() {
               <Pressable
                 key={`${person.personId}:${person.speakerLabel}`}
                 accessibilityRole="button"
-                accessibilityLabel={`Edit ${person.name}, ${person.speakerLabel}`}
+                accessibilityLabel={`Open ${person.name}`}
                 onPress={() => openPerson(person.personId, person.speakerLabel)}
                 style={({ pressed }) => [
                   styles.personRow,
@@ -234,7 +331,7 @@ export default function ConversationScreen() {
                     {[person.speakerLabel, person.relationship].filter(Boolean).join(" · ")}
                   </Text>
                 </View>
-                <Ionicons name="create-outline" size={19} color={colors.accent} />
+                <Ionicons name="chevron-forward" size={19} color={colors.accent} />
               </Pressable>
             )) : <InlineState icon="person-outline" title="No named participants" body="Speaker labels remain available in the transcript." />}
           </SoftCard>
@@ -254,7 +351,11 @@ export default function ConversationScreen() {
           />
           <View style={styles.timeline}>
             {item.segments.map((segment, index) => (
-              <View key={segment.id} style={styles.timelineRow}>
+              <Pressable
+                key={segment.id}
+                onPress={() => playEvidence(segment.startMs)}
+                style={styles.timelineRow}
+              >
                 <View style={styles.timelineRail}>
                   <View style={[styles.timelineDot, { backgroundColor: index % 2 ? colors.accent : colors.sage }]} />
                   {index < item.segments.length - 1 ? <View style={[styles.timelineLine, { backgroundColor: colors.line }]} /> : null}
@@ -269,13 +370,16 @@ export default function ConversationScreen() {
                         <Text style={[styles.speakerSource, { color: colors.faint }]}>{segment.speakerLabel}</Text>
                       ) : null}
                     </View>
-                    <Text style={[styles.timestamp, { color: colors.faint }]}>{Math.floor(segment.startMs / 60000)}:{String(Math.floor(segment.startMs / 1000) % 60).padStart(2, "0")}</Text>
+                    <View style={styles.segmentTimeRow}>
+                      <Text style={[styles.timestamp, { color: colors.faint }]}>{formatTimestamp(segment.startMs)}</Text>
+                      {clip.available ? <Ionicons name="play-circle-outline" size={18} color={colors.accent} /> : null}
+                    </View>
                   </View>
                   <Text selectable style={[styles.segmentText, { color: colors.ink }]}>
                     {transcriptMode === "raw" ? segment.rawText : transcriptMode === "roman" ? segment.romanHinglishText : segment.cleanText}
                   </Text>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -291,7 +395,7 @@ export default function ConversationScreen() {
             <Text style={[styles.askSubheading, { color: colors.muted }]}>Answers use only this conversation and link back to its transcript.</Text>
           </View>
           {[
-            "What was the main outcome?",
+            "What was promised?",
             "Who agreed to do what?",
             "What concerns were raised?",
           ].map((prompt) => (
@@ -328,6 +432,18 @@ export default function ConversationScreen() {
               <Text selectable style={[styles.answerText, { color: colors.ink }]}>{answer}</Text>
             </View>
           ) : null}
+          {citationSegments.map((segment) => (
+            <EvidenceCard
+              key={segment.id}
+              quote={segment.cleanText || segment.rawText}
+              speakerLabel={segment.speakerLabel}
+              speakerName={segment.speakerName}
+              startMs={segment.startMs}
+              playing={clip.playing && clip.mode === "clip" && activeClipMs === segment.startMs}
+              available={clip.available}
+              onPlay={() => playEvidence(segment.startMs)}
+            />
+          ))}
         </View>
       ) : null}
 
@@ -359,6 +475,7 @@ export default function ConversationScreen() {
           </Pressable>
         </View>
       ) : null}
+      {clip.error ? <Text style={[styles.clipError, { color: colors.danger }]}>{clip.error}</Text> : null}
     </KeyboardScreen>
   );
 }
@@ -372,6 +489,17 @@ const styles = StyleSheet.create({
   metadata: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   date: { fontSize: typeScale.caption, fontWeight: "600" },
   title: { fontSize: typeScale.title1, lineHeight: 40, fontWeight: "800", letterSpacing: -1.1, marginTop: spacing.md },
+  player: { marginTop: spacing.md },
+  reviewBanner: {
+    marginTop: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  reviewBannerText: { flex: 1, fontSize: 13, fontWeight: "700" },
   topics: { gap: spacing.xs, paddingTop: spacing.md, paddingBottom: spacing.xs },
   topic: { minHeight: 30, borderRadius: radii.pill, justifyContent: "center", paddingHorizontal: spacing.sm },
   topicText: { fontSize: typeScale.caption, fontWeight: "600" },
@@ -385,9 +513,9 @@ const styles = StyleSheet.create({
   checkbox: { width: 24, height: 24, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center", marginTop: 1 },
   actionCopy: { flex: 1 },
   actionText: { fontSize: typeScale.body, lineHeight: 21, fontWeight: "600" },
-  actionMeta: { fontSize: typeScale.caption, marginTop: 3 },
-  decisionRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
-  decisionIcon: { width: 36, height: 36, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  actionMeta: { fontSize: typeScale.caption, marginTop: 3, fontWeight: "700" },
+  decisionRow: { minHeight: 60, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingVertical: spacing.sm },
+  decisionIcon: { width: 36, height: 36, borderRadius: 13, alignItems: "center", justifyContent: "center", marginTop: 2 },
   decisionText: { flex: 1, fontSize: typeScale.body, lineHeight: 21 },
   personRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
   personAvatar: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center" },
@@ -403,6 +531,7 @@ const styles = StyleSheet.create({
   timelineLine: { flex: 1, width: 1, marginVertical: 4 },
   segmentCard: { flex: 1, borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.sm },
   segmentMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.xs },
+  segmentTimeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   speaker: { fontSize: 13, fontWeight: "800" },
   speakerSource: { fontSize: 10, fontWeight: "600", marginTop: 1 },
   timestamp: { fontSize: 11, fontVariant: ["tabular-nums"] },
@@ -427,4 +556,5 @@ const styles = StyleSheet.create({
   menuCopy: { flex: 1 },
   menuTitle: { fontSize: 15, fontWeight: "700" },
   menuBody: { fontSize: 12, marginTop: 3 },
+  clipError: { marginTop: spacing.md, fontSize: 13 },
 });

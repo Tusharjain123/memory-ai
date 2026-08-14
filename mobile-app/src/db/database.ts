@@ -6,6 +6,8 @@ import {
   MIGRATION_3,
   MIGRATION_4,
   MIGRATION_5,
+  MIGRATION_6,
+  MIGRATION_7,
   SCHEMA_VERSION,
 } from "./schema";
 
@@ -46,6 +48,16 @@ async function initializeDatabase(): Promise<SQLite.SQLiteDatabase> {
     await database.execAsync(MIGRATION_5);
     await database.execAsync("PRAGMA user_version = 5");
     version = 5;
+  }
+  if (version < 6) {
+    await database.execAsync(MIGRATION_6);
+    await database.execAsync("PRAGMA user_version = 6");
+    version = 6;
+  }
+  if (version < 7) {
+    await database.execAsync(MIGRATION_7);
+    await database.execAsync("PRAGMA user_version = 7");
+    version = 7;
   }
   if (version > SCHEMA_VERSION) {
     throw new Error("This database was created by a newer version of Memory AI");

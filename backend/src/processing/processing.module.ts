@@ -5,6 +5,7 @@ import { ProcessingController } from "./processing.controller.js";
 import { ProcessingQueueService } from "./processing-queue.service.js";
 import { ProcessingService } from "./processing.service.js";
 import { TempAudioService } from "./temp-audio.service.js";
+import { UploadSessionService } from "./upload-session.service.js";
 
 @Module({
   controllers: [ProcessingController],
@@ -12,6 +13,7 @@ import { TempAudioService } from "./temp-audio.service.js";
     ProcessingService,
     ProcessingQueueService,
     TempAudioService,
+    UploadSessionService,
     DeepgramService,
     OllamaService,
   ],

@@ -18,13 +18,34 @@ const understanding = {
     cleanText: "We will deploy today.",
     romanHinglishText: "Aaj deploy karenge.",
   }],
-  decisions: [{ id: "decision-1", text: "Deploy today" }],
-  actionItems: [{
-    id: "action-1",
-    task: "Complete deployment",
-    owner: "Rahul",
+  decisions: [{
+    id: "decision-1",
+    text: "Deploy today",
+    confidence: "high" as const,
+    segmentId: "segment-1",
+    quote: "Aaj deploy karenge.",
+  }],
+  commitments: [{
+    id: "commitment-1",
+    text: "Complete deployment",
+    direction: "they_owe" as const,
+    ownerName: "Rahul",
+    counterpartyName: null,
     dueAt: null,
-    completed: false as const,
+    status: "proposed" as const,
+    confidence: "high" as const,
+    segmentId: "segment-1",
+    quote: "Aaj deploy karenge.",
+  }],
+  memoryCandidates: [{
+    id: "memory-1",
+    personName: "Rahul",
+    kind: "fact" as const,
+    text: "Rahul owns deployment",
+    memoryClass: "transcript_fact" as const,
+    confidence: "medium" as const,
+    segmentId: "segment-1",
+    quote: "Aaj deploy karenge.",
   }],
 };
 
@@ -87,16 +108,16 @@ describe("OllamaService", () => {
       messages: Array<{ role: string; content: string }>;
     };
     expect(body.format.type).toBe("object");
-    expect(body.format.required).toContain("romanHinglishTranscript");
-    expect(body.format.properties).toHaveProperty("actionItems");
+    expect(body.format.required).toContain("commitments");
+    expect(body.format.required).toContain("memoryCandidates");
+    expect(body.format.properties).toHaveProperty("commitments");
+    expect(body.format.properties).not.toHaveProperty("actionItems");
     const system = body.messages.find((message) => message.role === "system")?.content ?? "";
     const user = body.messages.find((message) => message.role === "user")?.content ?? "";
     expect(system).toContain("fix only obvious ASR typos");
-    expect(system).toContain("Do not paraphrase, summarize, reorder, or add words");
-    expect(system).toContain("romanize Hindi words faithfully");
-    expect(system).toContain("Produce one segments entry per input utterance");
+    expect(system).toContain("explicit promises");
+    expect(system).toContain("Do not invent evidence");
     expect(user).toContain("Detected languages: hi");
-    expect(user).toContain("Keep cleaned and Hinglish text faithful");
   });
 
   it("rejects malformed model output instead of persisting it", async () => {
@@ -115,7 +136,7 @@ describe("OllamaService", () => {
     })).rejects.toThrow();
   });
 
-  it("normalizes generated identities and derives transcripts from authoritative segments", async () => {
+  it("normalizes commitments with evidence from authoritative segments", async () => {
     const service = new OllamaService();
     vi.spyOn(service, "understand").mockResolvedValue({
       ...understanding,
@@ -125,25 +146,48 @@ describe("OllamaService", () => {
         { name: "rahul", speakerLabel: "Speaker 1" },
       ],
       decisions: [
-        { id: "duplicate", text: " Deploy today " },
-        { id: "duplicate", text: "Notify the team" },
-      ],
-      actionItems: [
         {
           id: "duplicate",
-          task: "Complete deployment",
-          owner: "Rahul",
-          dueAt: null,
-          completed: false,
+          text: " Deploy today ",
+          confidence: "high",
+          segmentId: "segment-1",
+          quote: "Aaj deploy karenge.",
         },
         {
           id: "duplicate",
-          task: " Notify team ",
-          owner: "Rahul",
-          dueAt: null,
-          completed: false,
+          text: "Notify the team",
+          confidence: "medium",
+          segmentId: null,
+          quote: null,
         },
       ],
+      commitments: [
+        {
+          id: "duplicate",
+          text: "Complete deployment",
+          direction: "they_owe",
+          ownerName: "Rahul",
+          counterpartyName: null,
+          dueAt: null,
+          status: "proposed",
+          confidence: "high",
+          segmentId: "segment-1",
+          quote: "Aaj deploy karenge.",
+        },
+        {
+          id: "duplicate",
+          text: " Notify team ",
+          direction: "i_owe",
+          ownerName: null,
+          counterpartyName: "Rahul",
+          dueAt: null,
+          status: "proposed",
+          confidence: "low",
+          segmentId: null,
+          quote: null,
+        },
+      ],
+      memoryCandidates: [],
       cleanTranscript: "Untrusted top-level text",
       romanHinglishTranscript: "Untrusted top-level text",
     });
@@ -161,16 +205,24 @@ describe("OllamaService", () => {
       }],
     });
 
+    expect(result.schemaVersion).toBe(2);
     expect(result.topics).toEqual(["deployment"]);
     expect(result.participants).toHaveLength(1);
     expect(result.decisions.map((item) => item.id)).toEqual([
       "decision-1",
       "decision-2",
     ]);
-    expect(result.actionItems.map((item) => item.id)).toEqual([
-      "action-1",
-      "action-2",
+    expect(result.commitments.map((item) => item.id)).toEqual([
+      "commitment-1",
+      "commitment-2",
     ]);
+    expect(result.commitments[0]).toMatchObject({
+      startMs: 0,
+      speakerLabel: "Speaker 1",
+      segmentId: "segment-1",
+      quote: "Aaj deploy karenge.",
+    });
+    expect(result.actionItems).toHaveLength(2);
     expect(result.cleanTranscript).toBe("We will deploy today.");
     expect(result.romanHinglishTranscript).toBe("Aaj deploy karenge.");
   });
@@ -194,5 +246,6 @@ describe("OllamaService", () => {
 
     expect(result.title).toBe("Deployment planning");
     expect(result.embeddings).toEqual([]);
+    expect(result.commitments).toHaveLength(1);
   });
 });

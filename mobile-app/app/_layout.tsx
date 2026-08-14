@@ -37,10 +37,13 @@ export default function RootLayout() {
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="record" options={{ title: "New memory", presentation: "modal", gestureEnabled: false }} />
             <Stack.Screen name="conversation/[id]" options={{ title: "Memory" }} />
+            <Stack.Screen name="review/[id]" options={{ title: "Review memory" }} />
+            <Stack.Screen name="commitments" options={{ title: "Commitments" }} />
             <Stack.Screen name="search" options={{ title: "Ask Memory" }} />
             <Stack.Screen name="settings" options={{ title: "Privacy" }} />
             <Stack.Screen name="people" options={{ title: "People" }} />
-            <Stack.Screen name="person/[id]" options={{ title: "Person details", presentation: "modal" }} />
+            <Stack.Screen name="person/[id]" options={{ title: "Person" }} />
+            <Stack.Screen name="person/[id]/prep" options={{ title: "Prep brief" }} />
             <Stack.Screen name="pending" options={{ title: "Saved recordings" }} />
             <Stack.Screen name="profile" options={{ title: "Your profile" }} />
             <Stack.Screen name="account" options={{ title: "Profile settings" }} />

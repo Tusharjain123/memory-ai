@@ -21,9 +21,10 @@ type ProcessingJob = {
   audioPath: string;
   directory: string;
   mimetype: string;
+  keyterms?: string[];
 };
 
-export const RESULT_TTL_MS = 60 * 60_000;
+export const RESULT_TTL_MS = 4 * 60 * 60_000;
 const SWEEP_INTERVAL_MS = 5 * 60_000;
 
 export function processingQueueName(
@@ -61,7 +62,17 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
       async (job: Job<ProcessingJob>) => {
         try {
           await job.updateProgress(10);
-          const transcript = await this.deepgram.transcribe(job.data.audioPath, job.data.mimetype);
+          const transcript = await this.deepgram.transcribe(
+            job.data.audioPath,
+            job.data.mimetype,
+            {
+              keyterms: job.data.keyterms ?? [],
+              onProgress: async (completed, total) => {
+                const span = 45;
+                await job.updateProgress(10 + Math.round((completed / total) * span));
+              },
+            },
+          );
           await job.updateProgress(55);
           const result = await this.ollama.assemble(transcript);
           await job.updateProgress(100);

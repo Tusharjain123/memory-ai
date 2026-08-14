@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, greeting, relativeDate } from "./format";
+import { formatDuration, formatTimestamp, greeting, relativeDate } from "./format";
 
 describe("display formatting", () => {
   it("formats duration without zero-minute noise", () => {
     expect(formatDuration(12_000)).toBe("1 min");
     expect(formatDuration(3_900_000)).toBe("1 hr 5 min");
+  });
+
+  it("formats clip timestamps", () => {
+    expect(formatTimestamp(0)).toBe("0:00");
+    expect(formatTimestamp(125_000)).toBe("2:05");
+    expect(formatTimestamp(3_600_000)).toBe("1:00:00");
+    expect(formatTimestamp(3 * 3_600_000 + 5 * 60_000)).toBe("3:05:00");
   });
 
   it("uses calm relative dates", () => {

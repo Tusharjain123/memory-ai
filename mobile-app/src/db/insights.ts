@@ -17,6 +17,11 @@ export type SearchMemory = {
   title: string;
   text: string;
   score: number;
+  quote?: string | null;
+  startMs?: number | null;
+  speakerLabel?: string | null;
+  recordingUri?: string | null;
+  confidence?: string | null;
 };
 
 export type PersonMemory = {
@@ -42,10 +47,15 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
       total: number; duration: number; average_duration: number;
     }>(`SELECT COUNT(*) total, COALESCE(SUM(duration_ms),0) duration,
         COALESCE(AVG(duration_ms),0) average_duration FROM conversations`),
-    database.getFirstAsync<{ total: number }>("SELECT COUNT(*) total FROM people"),
+    database.getFirstAsync<{ total: number }>(
+      "SELECT COUNT(*) total FROM people WHERE is_placeholder=0",
+    ),
     database.getFirstAsync<{ pending: number; completed: number }>(
-      `SELECT COALESCE(SUM(CASE WHEN completed=0 THEN 1 ELSE 0 END),0) pending,
-       COALESCE(SUM(CASE WHEN completed=1 THEN 1 ELSE 0 END),0) completed FROM action_items`,
+      `SELECT COALESCE(SUM(CASE WHEN status IN ('proposed','confirmed')
+          AND approval_status IN ('approved','corrected') THEN 1 ELSE 0 END),0) pending,
+       COALESCE(SUM(CASE WHEN status='completed'
+          AND approval_status IN ('approved','corrected') THEN 1 ELSE 0 END),0) completed
+       FROM commitments`,
     ),
     database.getAllAsync<{ topics_json: string }>("SELECT topics_json FROM conversations"),
   ]);
@@ -77,11 +87,13 @@ export async function listPeople(): Promise<PersonMemory[]> {
     last_interaction_at: string;
     conversation_id: string;
     topics_json: string;
+    is_placeholder: number;
   }>(
-    `SELECT p.id,p.name,p.last_interaction_at,cp.conversation_id,c.topics_json
+    `SELECT p.id,p.name,p.last_interaction_at,cp.conversation_id,c.topics_json,p.is_placeholder
      FROM people p
      JOIN conversation_people cp ON cp.person_id=p.id
      JOIN conversations c ON c.id=cp.conversation_id
+     WHERE p.is_placeholder=0
      ORDER BY p.last_interaction_at DESC`,
   );
   const people = new Map<string, PersonMemory>();
@@ -132,16 +144,78 @@ export async function semanticSearch(
 export async function keywordSearch(query: string, limit = 20): Promise<SearchMemory[]> {
   const database = await getDatabase();
   const term = `%${query.trim()}%`;
-  const rows = await database.getAllAsync<{
-    id: string; conversation_id: string; title: string; text: string;
-  }>(
-    `SELECT s.id,s.conversation_id,c.title,s.clean_text text
-     FROM transcript_segments s JOIN conversations c ON c.id=s.conversation_id
-     WHERE s.clean_text LIKE ? OR c.title LIKE ? OR c.summary LIKE ?
-     ORDER BY c.created_at DESC LIMIT ?`,
-    term, term, term, limit,
-  );
-  return rows.map((row) => ({ ...row, conversationId: row.conversation_id, score: 1 }));
+  const [segments, commitments, memories] = await Promise.all([
+    database.getAllAsync<{
+      id: string; conversation_id: string; title: string; text: string;
+    }>(
+      `SELECT s.id,s.conversation_id,c.title,s.clean_text text
+       FROM transcript_segments s JOIN conversations c ON c.id=s.conversation_id
+       WHERE s.clean_text LIKE ? OR c.title LIKE ? OR c.summary LIKE ?
+       ORDER BY c.created_at DESC LIMIT ?`,
+      term, term, term, limit,
+    ),
+    database.getAllAsync<{
+      id: string; conversation_id: string; title: string; text: string;
+      quote: string | null; start_ms: number | null; speaker_label: string | null;
+      recording_uri: string | null; confidence: string;
+    }>(
+      `SELECT cm.id,cm.conversation_id,c.title,
+              ('Commitment: ' || cm.text) text,
+              cm.quote, cm.start_ms, cm.speaker_label, c.recording_uri, cm.confidence
+       FROM commitments cm JOIN conversations c ON c.id=cm.conversation_id
+       WHERE cm.approval_status IN ('approved','corrected')
+         AND (cm.text LIKE ? OR IFNULL(cm.quote,'') LIKE ?)
+       ORDER BY cm.updated_at DESC LIMIT ?`,
+      term, term, Math.ceil(limit / 2),
+    ),
+    database.getAllAsync<{
+      id: string; conversation_id: string; title: string; text: string;
+      quote: string | null; start_ms: number | null; speaker_label: string | null;
+      recording_uri: string | null; confidence: string;
+    }>(
+      `SELECT pm.id,pm.conversation_id,c.title,
+              ('Remembered: ' || pm.text) text,
+              pm.quote, pm.start_ms, pm.speaker_label, c.recording_uri, pm.confidence
+       FROM person_memories pm JOIN conversations c ON c.id=pm.conversation_id
+       WHERE pm.approval_status IN ('approved','corrected')
+         AND (pm.text LIKE ? OR IFNULL(pm.quote,'') LIKE ?)
+       ORDER BY pm.updated_at DESC LIMIT ?`,
+      term, term, Math.ceil(limit / 2),
+    ),
+  ]);
+  return [
+    ...commitments.map((row) => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      title: row.title,
+      text: row.text,
+      score: 1.2,
+      quote: row.quote,
+      startMs: row.start_ms,
+      speakerLabel: row.speaker_label,
+      recordingUri: row.recording_uri,
+      confidence: row.confidence,
+    })),
+    ...memories.map((row) => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      title: row.title,
+      text: row.text,
+      score: 1.1,
+      quote: row.quote,
+      startMs: row.start_ms,
+      speakerLabel: row.speaker_label,
+      recordingUri: row.recording_uri,
+      confidence: row.confidence,
+    })),
+    ...segments.map((row) => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      title: row.title,
+      text: row.text,
+      score: 1,
+    })),
+  ].slice(0, limit);
 }
 
 export async function getConversationContext(conversationId: string): Promise<SearchMemory[]> {

@@ -1,3 +1,14 @@
+export function formatTimestamp(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const minutePart = hours > 0 ? minutes.toString().padStart(2, "0") : String(minutes);
+  const secondPart = seconds.toString().padStart(2, "0");
+  if (hours > 0) return `${hours}:${minutePart}:${secondPart}`;
+  return `${minutePart}:${secondPart}`;
+}
+
 export function formatDuration(ms: number): string {
   const minutes = Math.max(1, Math.round(ms / 60_000));
   if (minutes < 60) return `${minutes} min`;

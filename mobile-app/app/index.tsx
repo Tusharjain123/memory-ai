@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { listConversations, type ConversationListItem } from "../src/db/conversations";
 import { listPendingRecordings } from "../src/db/pendingRecordings";
+import { countOpenCommitments, countPendingReviews, listPendingReviewConversations } from "../src/db/commitments";
 import { MemoryListSkeleton } from "../src/components/ui";
 import { formatDuration, greeting, relativeDate } from "../src/utils/format";
 import { radii, shadows, spacing, type AppColors, typeScale, useAppTheme } from "../src/theme";
@@ -42,7 +43,7 @@ function MemoryCard({ item, colors, onPress }: { item: ConversationListItem; col
       <Text numberOfLines={1} style={[styles.memoryTitle, { color: colors.ink }]}>{item.title}</Text>
       <Text numberOfLines={2} style={[styles.memorySummary, { color: colors.muted }]}>{item.summary}</Text>
       <View style={styles.memoryBottom}>
-        <Text style={[styles.memorySignals, { color: colors.faint }]}>{item.people.length} people · {item.actionItemCount} actions</Text>
+        <Text style={[styles.memorySignals, { color: colors.faint }]}>{item.people.length} people · {item.commitmentCount ?? item.actionItemCount} commitments</Text>
         <Ionicons name="chevron-forward" size={18} color={colors.faint} />
       </View>
     </Pressable>
@@ -65,12 +66,27 @@ export default function HomeScreen() {
   const [question, setQuestion] = useState("");
   const [items, setItems] = useState<ConversationListItem[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [openCommitments, setOpenCommitments] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [reviewInbox, setReviewInbox] = useState<Array<{ conversationId: string; title: string; pendingCount: number }>>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
-    const [conversations, pending] = await Promise.all([listConversations(), listPendingRecordings()]);
-    setItems(conversations); setPendingCount(pending.length); setLoaded(true); setRefreshing(false);
+    const [conversations, pending, commitments, reviews, inbox] = await Promise.all([
+      listConversations(),
+      listPendingRecordings(),
+      countOpenCommitments(),
+      countPendingReviews(),
+      listPendingReviewConversations(),
+    ]);
+    setItems(conversations);
+    setPendingCount(pending.length);
+    setOpenCommitments(commitments);
+    setReviewCount(reviews);
+    setReviewInbox(inbox.slice(0, 3));
+    setLoaded(true);
+    setRefreshing(false);
   }, []);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -118,9 +134,28 @@ export default function HomeScreen() {
           <ActionTile large icon="mic-outline" title="Record a conversation" body="Memory will capture the important moments for you." onPress={record} colors={colors} />
           <View style={styles.smallActions}>
             <ActionTile icon="sparkles-outline" title="Ask Memory" onPress={() => router.push("/search")} colors={colors} />
-            <ActionTile icon="archive-outline" title="Saved audio" onPress={() => router.push("/pending")} colors={colors} />
+            <ActionTile
+              icon="checkmark-done-outline"
+              title="Commitments"
+              {...(openCommitments ? { body: `${openCommitments} open` } : {})}
+              onPress={() => router.push("/commitments" as never)}
+              colors={colors}
+            />
           </View>
         </View>
+
+        {reviewCount > 0 ? (
+          <Pressable
+            onPress={() => router.push(`/review/${reviewInbox[0]?.conversationId}` as never)}
+            style={[styles.pending, { backgroundColor: colors.sageSoft, borderColor: colors.line }]}
+          >
+            <Ionicons name="shield-checkmark-outline" size={20} color={colors.sage} />
+            <Text style={[styles.pendingText, { color: colors.ink }]}>
+              {reviewCount} conversation{reviewCount === 1 ? "" : "s"} waiting for memory review
+            </Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.sage} />
+          </Pressable>
+        ) : null}
 
         {pendingCount > 0 ? (
           <Pressable onPress={() => router.push("/pending")} style={[styles.pending, { backgroundColor: colors.accentSoft, borderColor: colors.line }]}>

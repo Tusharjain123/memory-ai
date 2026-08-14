@@ -52,13 +52,17 @@ export async function retrieveMemories(
         `Unique people: ${analytics.uniquePeople}`,
         `Pending tasks: ${analytics.pendingTasks}`,
         `Completed tasks: ${analytics.completedTasks}`,
+        `Open commitments: ${analytics.pendingTasks}`,
+        `Completed commitments: ${analytics.completedTasks}`,
         `Average meeting duration in milliseconds: ${analytics.averageDurationMs}`,
         `Most discussed topics: ${analytics.mostDiscussedTopics.map((item) => `${item.topic} (${item.count})`).join(", ")}`,
       ].join("\n"),
       score: 1,
     });
   }
-  for (const item of [...keywords, ...semantic]) {
+  // Prefer approved commitment/person-memory hits (higher score) ahead of raw segments.
+  const ranked = [...keywords, ...semantic].sort((left, right) => right.score - left.score);
+  for (const item of ranked) {
     const key = `${item.conversationId}:${item.id}`;
     if (!merged.has(key)) merged.set(key, item);
   }

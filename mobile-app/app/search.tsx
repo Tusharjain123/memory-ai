@@ -16,14 +16,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import type { AskResponse } from "../src/contracts";
 import { askGlobalWithContext, retrieveMemories } from "../src/services/ai";
 import type { SearchMemory } from "../src/db/insights";
+import { PlayableEvidence } from "../src/components/PlayableEvidence";
 import { SectionHeader } from "../src/components/ui";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 const SUGGESTIONS = [
   { icon: "checkmark-done-outline" as const, text: "What have I promised?" },
+  { icon: "people-outline" as const, text: "What did Rahul promise?" },
+  { icon: "sparkles-outline" as const, text: "Prepare me for Priya" },
   { icon: "git-branch-outline" as const, text: "What decisions were made recently?" },
-  { icon: "person-outline" as const, text: "What did Rahul mention?" },
-  { icon: "pricetag-outline" as const, text: "When did we discuss pricing?" },
 ];
 
 export default function AskMemoryScreen() {
@@ -186,29 +187,39 @@ export default function AskMemoryScreen() {
             {memories.length && answer ? (
               <View style={styles.sourcesBlock}>
                 <SectionHeader title="Sources" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sourceRow}>
+                <View style={{ gap: 10 }}>
                   {memories.slice(0, 6).map((item) => (
-                    <Pressable
-                      key={`${item.conversationId}:${item.id}`}
-                      accessibilityRole="link"
-                      accessibilityLabel={`Open source ${item.title}`}
-                      onPress={() => router.push(`/conversation/${item.conversationId}`)}
-                      style={({ pressed }) => [
-                        styles.sourceCard,
-                        { backgroundColor: colors.surface },
-                        !isDark && shadows.card,
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <View style={styles.sourceTop}>
-                        <Ionicons name="document-text-outline" size={17} color={colors.sage} />
-                        <Text style={[styles.sourceType, { color: colors.sage }]}>MEMORY</Text>
-                      </View>
-                      <Text numberOfLines={2} style={[styles.sourceTitle, { color: colors.ink }]}>{item.title}</Text>
-                      <Text numberOfLines={2} style={[styles.sourceText, { color: colors.muted }]}>{item.text}</Text>
-                    </Pressable>
+                    <View key={`${item.conversationId}:${item.id}`}>
+                      <Pressable
+                        accessibilityRole="link"
+                        accessibilityLabel={`Open source ${item.title}`}
+                        onPress={() => router.push(`/conversation/${item.conversationId}`)}
+                        style={({ pressed }) => [
+                          styles.sourceCard,
+                          { backgroundColor: colors.surface, width: "100%" },
+                          !isDark && shadows.card,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <View style={styles.sourceTop}>
+                          <Ionicons name="document-text-outline" size={17} color={colors.sage} />
+                          <Text style={[styles.sourceType, { color: colors.sage }]}>MEMORY</Text>
+                        </View>
+                        <Text numberOfLines={2} style={[styles.sourceTitle, { color: colors.ink }]}>{item.title}</Text>
+                        <Text numberOfLines={2} style={[styles.sourceText, { color: colors.muted }]}>{item.text}</Text>
+                      </Pressable>
+                      {item.quote || item.startMs != null ? (
+                        <PlayableEvidence
+                          recordingUri={item.recordingUri}
+                          quote={item.quote ?? null}
+                          speakerLabel={item.speakerLabel ?? null}
+                          startMs={item.startMs ?? null}
+                          confidence={(item.confidence as "low" | "medium" | "high" | null | undefined) ?? null}
+                        />
+                      ) : null}
+                    </View>
                   ))}
-                </ScrollView>
+                </View>
               </View>
             ) : null}
 

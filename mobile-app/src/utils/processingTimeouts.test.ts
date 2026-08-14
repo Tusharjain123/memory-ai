@@ -1,0 +1,20 @@
+import { describe, expect, it } from "vitest";
+import { computePollDeadlineMs, MAX_RECORDING_MS } from "./processingTimeouts";
+
+describe("computePollDeadlineMs", () => {
+  it("defaults to 30 minutes when duration is unknown", () => {
+    expect(computePollDeadlineMs()).toBe(30 * 60_000);
+    expect(computePollDeadlineMs(0)).toBe(30 * 60_000);
+  });
+
+  it("scales with duration up to the 150 minute cap", () => {
+    expect(computePollDeadlineMs(600)).toBe(600 * 2_000 + 180_000);
+    expect(computePollDeadlineMs(MAX_RECORDING_MS / 1000)).toBe(150 * 60_000);
+  });
+});
+
+describe("MAX_RECORDING_MS", () => {
+  it("caps recordings at 3 hours", () => {
+    expect(MAX_RECORDING_MS).toBe(3 * 60 * 60_000);
+  });
+});

@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "memory-ai.db";
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 7;
 
 export const MIGRATION_1 = `
 PRAGMA journal_mode = WAL;
@@ -157,4 +157,117 @@ LEFT JOIN conversation_people cp
   ON cp.conversation_id = c.id AND cp.speaker_label = ts.speaker_label
 WHERE cp.person_id IS NULL
 GROUP BY c.id, ts.speaker_label;
+`;
+
+export const MIGRATION_6 = `
+CREATE TABLE IF NOT EXISTS commitments (
+  id TEXT PRIMARY KEY NOT NULL,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  owner_person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+  counterparty_person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+  due_at TEXT,
+  confidence TEXT NOT NULL,
+  status TEXT NOT NULL,
+  memory_class TEXT NOT NULL,
+  approval_status TEXT NOT NULL,
+  segment_id TEXT,
+  quote TEXT,
+  start_ms INTEGER,
+  speaker_label TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_commitments_status ON commitments(status, approval_status);
+CREATE INDEX IF NOT EXISTS idx_commitments_conversation ON commitments(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_commitments_owner ON commitments(owner_person_id);
+CREATE INDEX IF NOT EXISTS idx_commitments_counterparty ON commitments(counterparty_person_id);
+
+CREATE TABLE IF NOT EXISTS person_memories (
+  id TEXT PRIMARY KEY NOT NULL,
+  person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  memory_class TEXT NOT NULL,
+  approval_status TEXT NOT NULL,
+  confidence TEXT NOT NULL,
+  segment_id TEXT,
+  quote TEXT,
+  start_ms INTEGER,
+  speaker_label TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_person_memories_person ON person_memories(person_id, approval_status);
+CREATE INDEX IF NOT EXISTS idx_person_memories_conversation ON person_memories(conversation_id);
+
+CREATE TABLE IF NOT EXISTS memory_reviews (
+  conversation_id TEXT PRIMARY KEY NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  pending_count INTEGER NOT NULL DEFAULT 0,
+  completed_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+ALTER TABLE decisions ADD COLUMN confidence TEXT NOT NULL DEFAULT 'medium';
+ALTER TABLE decisions ADD COLUMN segment_id TEXT;
+ALTER TABLE decisions ADD COLUMN quote TEXT;
+ALTER TABLE decisions ADD COLUMN start_ms INTEGER;
+ALTER TABLE decisions ADD COLUMN speaker_label TEXT;
+ALTER TABLE decisions ADD COLUMN memory_class TEXT NOT NULL DEFAULT 'ai_inference';
+ALTER TABLE decisions ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved';
+
+INSERT INTO commitments
+  (id,conversation_id,text,direction,owner_person_id,counterparty_person_id,due_at,
+   confidence,status,memory_class,approval_status,segment_id,quote,start_ms,speaker_label,
+   expires_at,created_at,updated_at)
+SELECT
+  a.id,
+  a.conversation_id,
+  a.task,
+  'unclear',
+  NULL,
+  NULL,
+  a.due_at,
+  'medium',
+  CASE WHEN a.completed=1 THEN 'completed' ELSE 'proposed' END,
+  'ai_inference',
+  'approved',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  c.created_at,
+  c.updated_at
+FROM action_items a
+JOIN conversations c ON c.id = a.conversation_id;
+
+UPDATE commitments
+SET owner_person_id = (
+  SELECT p.id FROM people p
+  JOIN action_items a ON a.id = commitments.id
+  WHERE a.owner IS NOT NULL
+    AND p.name = a.owner COLLATE NOCASE
+  LIMIT 1
+)
+WHERE EXISTS (
+  SELECT 1 FROM action_items a
+  WHERE a.id = commitments.id AND a.owner IS NOT NULL
+);
+
+INSERT INTO memory_reviews (conversation_id, pending_count, completed_at, created_at)
+SELECT id, 0, created_at, created_at FROM conversations;
+`;
+
+export const MIGRATION_7 = `
+ALTER TABLE pending_recordings ADD COLUMN upload_id TEXT;
+ALTER TABLE pending_recordings ADD COLUMN upload_part_index INTEGER;
+ALTER TABLE pending_recordings ADD COLUMN processing_job_id TEXT;
+ALTER TABLE pending_recordings ADD COLUMN duration_ms INTEGER;
 `;

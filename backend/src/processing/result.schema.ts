@@ -12,6 +12,14 @@ const segmentSchema = z.object({
   message: "Segment end must not precede its start",
 });
 
+const confidenceSchema = z.enum(["low", "medium", "high"]);
+
+const evidenceFields = {
+  confidence: confidenceSchema,
+  segmentId: z.string().nullable(),
+  quote: z.string().nullable(),
+};
+
 export const understandingSchema = z.object({
   title: z.string().min(1),
   mainGoal: z.string(),
@@ -23,19 +31,44 @@ export const understandingSchema = z.object({
     z.object({ name: z.string(), speakerLabel: z.string() }),
   ),
   segments: z.array(segmentSchema),
-  decisions: z.array(z.object({ id: z.string(), text: z.string() })),
-  actionItems: z.array(
+  decisions: z.array(
     z.object({
       id: z.string(),
-      task: z.string(),
-      owner: z.string().nullable(),
+      text: z.string(),
+      ...evidenceFields,
+    }),
+  ),
+  commitments: z.array(
+    z.object({
+      id: z.string(),
+      text: z.string(),
+      direction: z.enum(["i_owe", "they_owe", "mutual", "unclear"]),
+      ownerName: z.string().nullable(),
+      counterpartyName: z.string().nullable(),
       dueAt: z.string().nullable(),
-      completed: z.literal(false),
+      status: z.literal("proposed"),
+      ...evidenceFields,
+    }),
+  ),
+  memoryCandidates: z.array(
+    z.object({
+      id: z.string(),
+      personName: z.string().nullable(),
+      kind: z.enum(["preference", "fact", "follow_up", "topic"]),
+      text: z.string(),
+      memoryClass: z.enum(["transcript_fact", "ai_inference"]),
+      ...evidenceFields,
     }),
   ),
 });
 
 export type Understanding = z.infer<typeof understandingSchema>;
+
+const evidenceJsonProperties = {
+  confidence: { type: "string", enum: ["low", "medium", "high"] },
+  segmentId: { type: ["string", "null"] },
+  quote: { type: ["string", "null"] },
+} as const;
 
 export const understandingJsonSchema = {
   type: "object",
@@ -50,7 +83,8 @@ export const understandingJsonSchema = {
     "participants",
     "segments",
     "decisions",
-    "actionItems",
+    "commitments",
+    "memoryCandidates",
   ],
   properties: {
     title: { type: "string" },
@@ -101,22 +135,74 @@ export const understandingJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "text"],
-        properties: { id: { type: "string" }, text: { type: "string" } },
+        required: ["id", "text", "confidence", "segmentId", "quote"],
+        properties: {
+          id: { type: "string" },
+          text: { type: "string" },
+          ...evidenceJsonProperties,
+        },
       },
     },
-    actionItems: {
+    commitments: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "task", "owner", "dueAt", "completed"],
+        required: [
+          "id",
+          "text",
+          "direction",
+          "ownerName",
+          "counterpartyName",
+          "dueAt",
+          "status",
+          "confidence",
+          "segmentId",
+          "quote",
+        ],
         properties: {
           id: { type: "string" },
-          task: { type: "string" },
-          owner: { type: ["string", "null"] },
+          text: { type: "string" },
+          direction: {
+            type: "string",
+            enum: ["i_owe", "they_owe", "mutual", "unclear"],
+          },
+          ownerName: { type: ["string", "null"] },
+          counterpartyName: { type: ["string", "null"] },
           dueAt: { type: ["string", "null"] },
-          completed: { const: false },
+          status: { const: "proposed" },
+          ...evidenceJsonProperties,
+        },
+      },
+    },
+    memoryCandidates: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "personName",
+          "kind",
+          "text",
+          "memoryClass",
+          "confidence",
+          "segmentId",
+          "quote",
+        ],
+        properties: {
+          id: { type: "string" },
+          personName: { type: ["string", "null"] },
+          kind: {
+            type: "string",
+            enum: ["preference", "fact", "follow_up", "topic"],
+          },
+          text: { type: "string" },
+          memoryClass: {
+            type: "string",
+            enum: ["transcript_fact", "ai_inference"],
+          },
+          ...evidenceJsonProperties,
         },
       },
     },

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
@@ -10,6 +10,8 @@ import {
   type PendingRecording,
 } from "../src/db/pendingRecordings";
 import { saveConversation } from "../src/db/conversations";
+import { RecordingPlayer } from "../src/components/RecordingPlayer";
+import { useClipPlayer } from "../src/hooks/useClipPlayer";
 import { processRecording } from "../src/services/processing";
 import { relativeDate } from "../src/utils/format";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
@@ -19,19 +21,30 @@ export default function PendingRecordingsScreen() {
   const { colors, isDark } = useAppTheme();
   const [items, setItems] = useState<PendingRecording[]>([]);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processingProgress, setProcessingProgress] = useState<number | null>(null);
+  const [listenId, setListenId] = useState<string | null>(null);
+  const autoResumeRef = useRef<string | null>(null);
+  const listening = items.find((item) => item.id === listenId);
+  const player = useClipPlayer(listening?.recordingUri);
 
   const load = useCallback(async () => setItems(await listPendingRecordings()), []);
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  async function retry(item: PendingRecording): Promise<void> {
+  async function resume(item: PendingRecording): Promise<void> {
     if (processingId) return;
     void Haptics.selectionAsync();
     setProcessingId(item.id);
+    setProcessingProgress(item.processingJobId ? 10 : 0);
     try {
-      const result = await processRecording(item.recordingUri);
+      const result = await processRecording(item.recordingUri, {
+        pendingId: item.id,
+        durationMs: item.durationMs ?? undefined,
+        resumeUploadId: item.uploadId,
+        startPartIndex: item.uploadPartIndex ?? 0,
+        onProgress: setProcessingProgress,
+      });
       const conversationId = await saveConversation(result, item.recordingUri, item.id);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace(`/conversation/${conversationId}`);
+      router.replace(`/review/${conversationId}` as never);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Processing is unavailable";
       await setPendingRecordingError(item.id, message);
@@ -42,13 +55,34 @@ export default function PendingRecordingsScreen() {
       );
     } finally {
       setProcessingId(null);
+      setProcessingProgress(null);
     }
   }
+
+  useFocusEffect(useCallback(() => {
+    void load().then(async () => {
+      const loaded = await listPendingRecordings();
+      setItems(loaded);
+      const queued = loaded.find(
+        (item) => item.processingJobId && !item.lastError,
+      );
+      if (queued && autoResumeRef.current !== queued.id && !processingId) {
+        autoResumeRef.current = queued.id;
+        void resume(queued);
+      }
+    });
+  }, [load, processingId]));
 
   function confirmRemove(item: PendingRecording): void {
     Alert.alert("Remove this recording?", "The unprocessed audio will be permanently deleted from this device.", [
       { text: "Keep it", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => void deletePendingRecording(item.id).then(load) },
+      { text: "Remove", style: "destructive", onPress: () => {
+        if (listenId === item.id) {
+          player.stop();
+          setListenId(null);
+        }
+        void deletePendingRecording(item.id).then(load);
+      } },
     ]);
   }
 
@@ -62,7 +96,7 @@ export default function PendingRecordingsScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>Continue processing</Text>
-            <Text style={[styles.intro, { color: colors.muted }]}>These recordings are safe on your device. Continue whenever you’re online and the backend is ready.</Text>
+            <Text style={[styles.intro, { color: colors.muted }]}>Upload and transcription continue here in the background. You can leave and come back anytime.</Text>
           </View>
         }
         ListEmptyComponent={
@@ -78,6 +112,13 @@ export default function PendingRecordingsScreen() {
         }
         renderItem={({ item, index }) => {
           const isProcessing = processingId === item.id;
+          const statusLabel = isProcessing && processingProgress != null
+            ? ` · ${processingProgress}%`
+            : item.processingJobId
+              ? " · Transcribing"
+              : item.uploadId
+                ? " · Upload paused"
+                : " · Waiting securely";
           return (
             <View style={[styles.card, { backgroundColor: colors.surface }, !isDark && shadows.card, index > 0 && { marginTop: spacing.sm }]}>
               <View style={styles.cardTop}>
@@ -86,7 +127,10 @@ export default function PendingRecordingsScreen() {
                 </View>
                 <View style={styles.cardCopy}>
                   <Text style={[styles.title, { color: colors.ink }]}>Saved recording</Text>
-                  <Text style={[styles.date, { color: colors.muted }]}>{relativeDate(item.createdAt)} · Waiting securely</Text>
+                  <Text style={[styles.date, { color: colors.muted }]}>
+                    {relativeDate(item.createdAt)}
+                    {statusLabel}
+                  </Text>
                 </View>
                 <Ionicons name="lock-closed" size={16} color={colors.sage} />
               </View>
@@ -96,15 +140,41 @@ export default function PendingRecordingsScreen() {
                   <Text numberOfLines={2} style={[styles.noteText, { color: colors.muted }]}>Last attempt didn’t finish. Your audio was kept.</Text>
                 </View>
               ) : null}
+              {listenId === item.id ? (
+                <View style={styles.player}>
+                  <RecordingPlayer
+                    player={player}
+                    fallbackDurationMs={item.durationMs}
+                    autoPlay
+                  />
+                </View>
+              ) : null}
               <View style={styles.actions}>
                 <Pressable
                   accessibilityRole="button"
                   disabled={processingId !== null}
-                  onPress={() => void retry(item)}
+                  onPress={() => void resume(item)}
                   style={({ pressed }) => [styles.retry, { backgroundColor: colors.ink }, pressed && { opacity: 0.78 }]}
                 >
-                  {isProcessing ? <Ionicons name="sync" size={18} color={colors.background} /> : <Ionicons name="play" size={17} color={colors.background} />}
+                  {isProcessing ? <Ionicons name="sync" size={18} color={colors.background} /> : <Ionicons name="arrow-forward" size={17} color={colors.background} />}
                   <Text style={[styles.retryText, { color: colors.background }]}>{isProcessing ? "Processing…" : "Continue"}</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={listenId === item.id ? "Hide recording player" : "Listen to saved recording"}
+                  onPress={() => {
+                    if (listenId === item.id) {
+                      player.stop();
+                      setListenId(null);
+                      return;
+                    }
+                    player.stop();
+                    setListenId(item.id);
+                  }}
+                  style={({ pressed }) => [styles.listen, { borderColor: colors.line }, pressed && { opacity: 0.55 }]}
+                >
+                  <Ionicons name={listenId === item.id && player.playing ? "pause" : "headset-outline"} size={17} color={colors.ink} />
+                  <Text style={[styles.listenText, { color: colors.ink }]}>{listenId === item.id ? "Hide" : "Listen"}</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -140,9 +210,12 @@ const styles = StyleSheet.create({
   date: { fontSize: typeScale.caption, marginTop: 3 },
   note: { borderRadius: radii.sm, flexDirection: "row", alignItems: "center", gap: spacing.xs, padding: spacing.sm, marginTop: spacing.md },
   noteText: { flex: 1, fontSize: typeScale.caption, lineHeight: 17 },
+  player: { marginTop: spacing.md },
   actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
   retry: { flex: 1, minHeight: 50, borderRadius: radii.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   retryText: { fontSize: 14, fontWeight: "800" },
-  remove: { minWidth: 80, minHeight: 50, alignItems: "center", justifyContent: "center" },
+  listen: { minHeight: 50, borderWidth: StyleSheet.hairlineWidth, borderRadius: radii.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: spacing.sm },
+  listenText: { fontSize: 14, fontWeight: "800" },
+  remove: { minWidth: 72, minHeight: 50, alignItems: "center", justifyContent: "center" },
   removeText: { fontSize: 14, fontWeight: "700" },
 });

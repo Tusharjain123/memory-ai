@@ -11,10 +11,10 @@ import { AppModule } from "./app.module.js";
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true, bodyLimit: 150 * 1024 * 1024 }),
+    new FastifyAdapter({ logger: true, bodyLimit: 55 * 1024 * 1024 }),
   );
   await app.register(multipart, {
-    limits: { files: 1, fileSize: 150 * 1024 * 1024 },
+    limits: { files: 1, fileSize: 55 * 1024 * 1024 },
   });
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   app.enableCors();

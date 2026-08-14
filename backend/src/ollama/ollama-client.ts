@@ -54,10 +54,11 @@ export async function ollamaFetch(
   workload: OllamaWorkload,
   path: string,
   body: unknown,
+  timeoutOverrideMs?: number,
 ): Promise<Response> {
   const connection = resolveOllamaWorkloadConnection(workload);
   const headers = ollamaHeaders(connection, true);
-  const timeoutMs = positiveTimeout(
+  const timeoutMs = timeoutOverrideMs ?? positiveTimeout(
     workload === "chat"
       ? process.env.OLLAMA_CHAT_TIMEOUT_MS
       : process.env.OLLAMA_EMBED_TIMEOUT_MS,

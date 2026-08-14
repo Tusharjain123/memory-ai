@@ -95,12 +95,22 @@ export async function exportConversation(item: ConversationDetail): Promise<void
     "",
     "## Decisions",
     "",
-    item.decisions.map((decision) => `- ${decision.text}`).join("\n"),
+    item.decisions.map((decision) => {
+      const evidence = decision.quote
+        ? ` — “${decision.quote}”${decision.startMs != null ? ` @ ${Math.floor(decision.startMs / 1000)}s` : ""}`
+        : "";
+      return `- ${decision.text}${evidence}`;
+    }).join("\n"),
     "",
-    "## Action items",
+    "## Commitments",
     "",
-    item.actionItems
-      .map((action) => `- [${action.completed ? "x" : " "}] ${action.task}${action.owner ? ` — ${action.owner}` : ""}${action.dueAt ? ` (${action.dueAt})` : ""}`)
+    item.commitments
+      .map((commitment) => {
+        const evidence = commitment.quote
+          ? ` — “${commitment.quote}”`
+          : "";
+        return `- [${commitment.status === "completed" ? "x" : " "}] (${commitment.direction}) ${commitment.text}${commitment.ownerName ? ` — ${commitment.ownerName}` : ""}${commitment.dueAt ? ` (${commitment.dueAt})` : ""}${evidence}`;
+      })
       .join("\n"),
     "",
     "## Original transcript",

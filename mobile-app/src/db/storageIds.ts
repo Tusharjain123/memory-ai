@@ -1,4 +1,4 @@
-export type StoredEntityType = "segment" | "decision" | "action";
+export type StoredEntityType = "segment" | "decision" | "action" | "commitment" | "memory";
 
 export function storedEntityId(
   conversationId: string,

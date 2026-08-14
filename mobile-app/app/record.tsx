@@ -3,23 +3,30 @@ import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Easing, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import {
-  RecordingPresets,
+  AudioQuality,
+  IOSOutputFormat,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
+  type RecordingOptions,
 } from "expo-audio";
 import { useNavigation, useRouter } from "expo-router";
-import { saveConversation } from "../src/db/conversations";
 import { useSafeAudioRecorderState } from "../src/hooks/useSafeAudioRecorderState";
 import { createPendingRecording, setPendingRecordingError } from "../src/db/pendingRecordings";
-import { processRecording } from "../src/services/processing";
+import { startProcessing } from "../src/services/processing";
+import { MAX_RECORDING_MS } from "../src/utils/processingTimeouts";
 import { persistRecording } from "../src/services/recordings";
 import { useRecordingStore } from "../src/store/useRecordingStore";
 import { nextMeterLevels, normalizeMetering } from "../src/utils/audioMeter";
 import {
+  createDistantMicDetectorState,
+  nextDistantMicDetectorState,
+} from "../src/utils/distantMicDetector";
+import {
   createMuffledDetectorState,
   nextMuffledDetectorState,
 } from "../src/utils/muffledDetector";
+import { SPEECH_CAPTURE } from "../src/utils/speechRecordingOptions";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 function time(ms: number): string {
@@ -30,12 +37,28 @@ function time(ms: number): string {
 const EMPTY_LEVELS = Array.from({ length: 28 }, () => 0);
 const START_TIMEOUT_MS = 8_000;
 
-const recordingOptions = {
-  ...RecordingPresets.HIGH_QUALITY!,
+/** Mono speech preset — better for ASR/diarization than stereo HIGH_QUALITY. */
+const recordingOptions: RecordingOptions = {
+  extension: SPEECH_CAPTURE.extension,
+  sampleRate: SPEECH_CAPTURE.sampleRate,
+  numberOfChannels: SPEECH_CAPTURE.numberOfChannels,
+  bitRate: SPEECH_CAPTURE.bitRate,
   isMeteringEnabled: true,
   android: {
-    ...RecordingPresets.HIGH_QUALITY!.android,
-    audioSource: "voice_recognition" as const,
+    outputFormat: "mpeg4",
+    audioEncoder: "aac",
+    audioSource: SPEECH_CAPTURE.androidAudioSource,
+  },
+  ios: {
+    outputFormat: IOSOutputFormat.MPEG4AAC,
+    audioQuality: AudioQuality.MAX,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {
+    mimeType: "audio/webm",
+    bitsPerSecond: SPEECH_CAPTURE.bitRate,
   },
 };
 
@@ -86,7 +109,11 @@ export default function RecordScreen() {
   const [levels, setLevels] = useState(EMPTY_LEVELS);
   const [starting, setStarting] = useState(false);
   const [muffledHint, setMuffledHint] = useState(false);
+  const [distantHint, setDistantHint] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const recordedDurationMsRef = useRef(0);
   const muffledRef = useRef(createMuffledDetectorState());
+  const distantRef = useRef(createDistantMicDetectorState());
 
   useEffect(() => {
     void (async () => {
@@ -109,19 +136,40 @@ export default function RecordScreen() {
 
   useEffect(() => {
     setElapsedMs(recorderState.durationMillis);
+    if (recorderState.durationMillis > 0) {
+      recordedDurationMsRef.current = recorderState.durationMillis;
+    }
   }, [recorderState.durationMillis, setElapsedMs]);
+
+  useEffect(() => {
+    if (
+      status === "recording"
+      && recorderState.durationMillis >= MAX_RECORDING_MS
+    ) {
+      Alert.alert(
+        "Maximum length reached",
+        "Recordings are limited to 3 hours. Saving what you captured.",
+      );
+      void stop();
+    }
+  }, [recorderState.durationMillis, status]);
   useEffect(() => {
     if (status !== "recording") {
       muffledRef.current = createMuffledDetectorState();
+      distantRef.current = createDistantMicDetectorState();
       setMuffledHint(false);
+      setDistantHint(false);
       return;
     }
     if (recorderState.metering === undefined) return;
     const level = normalizeMetering(recorderState.metering);
     setLevels((current) => nextMeterLevels(current, level));
-    const next = nextMuffledDetectorState(muffledRef.current, level);
-    muffledRef.current = next;
-    setMuffledHint(next.muffled);
+    const muffled = nextMuffledDetectorState(muffledRef.current, level);
+    muffledRef.current = muffled;
+    setMuffledHint(muffled.muffled);
+    const distant = nextDistantMicDetectorState(distantRef.current, level);
+    distantRef.current = distant;
+    setDistantHint(!muffled.muffled && distant.distant);
   }, [recorderState, status]);
   useEffect(() => () => reset(), [reset]);
   useEffect(() => {
@@ -225,17 +273,25 @@ export default function RecordScreen() {
     try {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStatus("processing");
+      setProcessingProgress(0);
       setLevels(EMPTY_LEVELS);
       await recorder.stop();
       const uri = recorder.uri;
       if (!uri) throw new Error("The recording file was not created");
       const savedUri = await persistRecording(uri);
-      const pending = await createPendingRecording(savedUri);
+      const pending = await createPendingRecording(
+        savedUri,
+        recordedDurationMsRef.current || undefined,
+      );
       pendingId = pending.id;
-      const result = await processRecording(savedUri);
-      const id = await saveConversation(result, savedUri, pending.id);
+      await startProcessing(savedUri, {
+        durationMs: recordedDurationMsRef.current,
+        pendingId: pending.id,
+        onProgress: setProcessingProgress,
+      });
+      allowExitRef.current = true;
       reset();
-      router.replace(`/conversation/${id}`);
+      router.replace("/pending" as never);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Could not process recording";
       if (pendingId) await setPendingRecordingError(pendingId, message);
@@ -283,8 +339,13 @@ export default function RecordScreen() {
             ? "Finding the summary, people, decisions, and next steps."
             : active
               ? "Speak naturally. You can pause whenever you need."
-              : "Capture a conversation without taking notes."}
+              : "Capture a conversation without taking notes. Keep the phone nearby for clearer Hindi."}
         </Text>
+        {!active && !processing ? (
+          <Text style={[styles.coachTip, { color: colors.faint }]}>
+            If several people talk at once, speaker labels may need a quick fix after.
+          </Text>
+        ) : null}
       </View>
       <View style={styles.visualArea} accessibilityLiveRegion="polite">
         <View style={styles.orbStage}>
@@ -358,14 +419,31 @@ export default function RecordScreen() {
             Hard to hear — is the phone covered or in a pocket?
           </Text>
         ) : null}
+        {distantHint && status === "recording" ? (
+          <Text style={[styles.muffledHint, { color: colors.muted }]}>
+            Hard to hear — move the phone closer for clearer Hindi.
+          </Text>
+        ) : null}
       </View>
 
       {processing ? (
         <View style={[styles.processingCard, { backgroundColor: colors.surface }, !isDark && shadows.card]}>
           {([
             { icon: "checkmark-circle", label: "Recording saved", done: true },
-            { icon: "radio-button-on", label: "Understanding the conversation", done: false },
-            { icon: "ellipse-outline", label: "Saving privately on this device", done: false },
+            {
+              icon: processingProgress >= 55 ? "checkmark-circle" : "radio-button-on",
+              label: processingProgress >= 55
+                ? "Transcript ready"
+                : processingProgress >= 10
+                  ? "Transcribing audio…"
+                  : "Understanding the conversation",
+              done: processingProgress >= 55,
+            },
+            {
+              icon: processingProgress >= 100 ? "checkmark-circle" : "ellipse-outline",
+              label: processingProgress >= 100 ? "Saved on this device" : "Saving privately on this device",
+              done: processingProgress >= 100,
+            },
           ] as const).map((step, index) => (
             <View key={step.label} style={styles.processingRow}>
               <Ionicons name={step.icon} size={20} color={step.done ? colors.sage : index === 1 ? colors.accent : colors.faint} />
@@ -445,6 +523,7 @@ const styles = StyleSheet.create({
   topCopy: { alignItems: "center", paddingTop: spacing.xxl },
   title: { fontSize: typeScale.title1, lineHeight: 40, fontWeight: "800", letterSpacing: -1, textAlign: "center", marginTop: spacing.lg },
   subtitle: { maxWidth: 320, fontSize: typeScale.body, lineHeight: 22, textAlign: "center", marginTop: spacing.xs },
+  coachTip: { maxWidth: 300, fontSize: typeScale.caption, lineHeight: 18, textAlign: "center", marginTop: spacing.sm },
   visualArea: { flex: 1, minHeight: 300, alignItems: "center", justifyContent: "center" },
   orbStage: { width: 160, height: 160, alignItems: "center", justifyContent: "center" },
   pulseOuter: { position: "absolute", width: 132, height: 132, borderRadius: 66, borderWidth: 22 },
