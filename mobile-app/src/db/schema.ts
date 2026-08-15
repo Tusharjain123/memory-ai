@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "memory-ai.db";
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const MIGRATION_1 = `
 PRAGMA journal_mode = WAL;
@@ -270,4 +270,9 @@ ALTER TABLE pending_recordings ADD COLUMN upload_id TEXT;
 ALTER TABLE pending_recordings ADD COLUMN upload_part_index INTEGER;
 ALTER TABLE pending_recordings ADD COLUMN processing_job_id TEXT;
 ALTER TABLE pending_recordings ADD COLUMN duration_ms INTEGER;
+`;
+
+export const MIGRATION_8 = `
+ALTER TABLE user_profile ADD COLUMN occupation TEXT;
+ALTER TABLE user_profile ADD COLUMN onboarding_goal TEXT;
 `;

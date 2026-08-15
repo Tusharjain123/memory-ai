@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useAppTheme } from "../src/theme";
 import { AppLock } from "../src/components/AppLock";
 import { useThemeStore } from "../src/store/useThemeStore";
+import { bindProcessingAppState } from "../src/services/processingOrchestrator";
 
 export default function RootLayout() {
   const { colors, isDark } = useAppTheme();
@@ -14,6 +15,8 @@ export default function RootLayout() {
   useEffect(() => {
     void hydrateTheme();
   }, [hydrateTheme]);
+
+  useEffect(() => bindProcessingAppState(), []);
 
   return (
     <SafeAreaProvider>
@@ -49,6 +52,7 @@ export default function RootLayout() {
             <Stack.Screen name="account" options={{ title: "Profile settings" }} />
             <Stack.Screen name="terms" options={{ title: "Terms of use" }} />
             <Stack.Screen name="about" options={{ title: "About Memory AI" }} />
+            <Stack.Screen name="feedback" options={{ title: "Send feedback" }} />
           </Stack>
         </AppLock>
       </KeyboardProvider>

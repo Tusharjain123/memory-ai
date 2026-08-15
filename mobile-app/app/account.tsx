@@ -131,13 +131,14 @@ export default function AccountScreen() {
       </SettingsGroup>
 
       <SettingsGroup title="GENERAL">
-        <SettingsRow icon="person-outline" title="Edit profile" body="Name, age, gender, email and phone" onPress={() => router.push("/profile")} />
+        <SettingsRow icon="person-outline" title="Edit profile" body="Name, role, goals and contact details" onPress={() => router.push("/profile")} />
         <SettingsRow icon="people-outline" title="People" body="People remembered from your conversations" onPress={() => router.push("/people")} />
         <SettingsRow icon="shield-checkmark-outline" title="Privacy & security" body="Biometric lock and local-data controls" onPress={() => router.push("/settings")} />
         <SettingsRow last icon="archive-outline" title="Saved recordings" body="Continue recordings waiting to process" onPress={() => router.push("/pending")} />
       </SettingsGroup>
 
       <SettingsGroup title="SUPPORT & LEGAL">
+        <SettingsRow icon="chatbubble-ellipses-outline" title="Send feedback" body="Report a problem or suggest what Memory should do next" onPress={() => router.push("/feedback" as never)} />
         <SettingsRow icon="document-text-outline" title="Terms of use" onPress={() => router.push("/terms")} />
         <SettingsRow icon="help-circle-outline" title="Help & privacy notes" body="How recording, processing, and storage work" onPress={() => router.push("/settings")} />
         <SettingsRow last icon="information-circle-outline" title="About Memory AI" body="What Memory does and how it works" value={`v${Constants.expoConfig?.version ?? "0.1.0"}`} onPress={() => router.push("/about")} />

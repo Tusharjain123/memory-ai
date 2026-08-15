@@ -14,6 +14,7 @@ import { useNavigation, useRouter } from "expo-router";
 import { useSafeAudioRecorderState } from "../src/hooks/useSafeAudioRecorderState";
 import { createPendingRecording, setPendingRecordingError } from "../src/db/pendingRecordings";
 import { startProcessing } from "../src/services/processing";
+import { ensureProcessing } from "../src/services/processingOrchestrator";
 import { MAX_RECORDING_MS } from "../src/utils/processingTimeouts";
 import { persistRecording } from "../src/services/recordings";
 import { useRecordingStore } from "../src/store/useRecordingStore";
@@ -288,6 +289,9 @@ export default function RecordScreen() {
         durationMs: recordedDurationMsRef.current,
         pendingId: pending.id,
         onProgress: setProcessingProgress,
+      });
+      void ensureProcessing(pending.id).catch(() => {
+        // Pending screen / AppState resume will surface failures.
       });
       allowExitRef.current = true;
       reset();

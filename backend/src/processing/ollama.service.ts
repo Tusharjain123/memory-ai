@@ -25,56 +25,11 @@ import {
   prepareUnderstandingUtterances,
   segmentsFromRawUtterances,
 } from "./transcript-coarsen.js";
-
-type ClaimWithEvidence = {
-  segmentId: string | null;
-  quote: string | null;
-};
-
-function buildSegmentLookup(
-  understanding: Understanding,
-  authoritative: TranscriptSegment[],
-): Map<string, TranscriptSegment> {
-  const byId = new Map<string, TranscriptSegment>();
-  for (const segment of authoritative) {
-    byId.set(segment.id, segment);
-  }
-  understanding.segments.forEach((segment, index) => {
-    const auth = authoritative[index];
-    if (auth && segment.id) byId.set(segment.id, auth);
-  });
-  return byId;
-}
-
-function attachEvidence<T extends ClaimWithEvidence>(
-  claim: T,
-  segmentsById: Map<string, TranscriptSegment>,
-): T & {
-  startMs: number | null;
-  speakerLabel: string | null;
-  segmentId: string | null;
-  quote: string | null;
-} {
-  const segment = claim.segmentId
-    ? segmentsById.get(claim.segmentId)
-    : undefined;
-  if (!segment) {
-    return {
-      ...claim,
-      segmentId: null,
-      quote: claim.quote?.trim() || null,
-      startMs: null,
-      speakerLabel: null,
-    };
-  }
-  return {
-    ...claim,
-    segmentId: segment.id,
-    quote: claim.quote?.trim() || null,
-    startMs: segment.startMs,
-    speakerLabel: segment.speakerLabel,
-  };
-}
+import {
+  attachEvidence,
+  buildSegmentLookup,
+  formatUtteranceForUnderstanding,
+} from "./evidence-attach.js";
 
 @Injectable()
 export class OllamaService {
@@ -87,10 +42,7 @@ export class OllamaService {
   ): Promise<Understanding> {
     const longRecording = options.longRecording ?? false;
     const speakerTranscript = transcript.utterances
-      .map(
-        (item) =>
-          `[${item.startMs}-${item.endMs}] Speaker ${item.speaker + 1}: ${item.text}`,
-      )
+      .map((item, index) => formatUtteranceForUnderstanding(item, index))
       .join("\n");
     const timeoutMs = computeOllamaChatTimeoutMs(
       durationSec ?? transcript.durationMs / 1000,
@@ -113,10 +65,11 @@ export class OllamaService {
               "cleanText / cleanTranscript: fix only obvious ASR typos, casing, and punctuation. Do not paraphrase, summarize, reorder, or add words.",
               "romanHinglishText / romanHinglishTranscript: romanize Hindi words faithfully into Latin script; keep English words as English; do not invent content.",
               "Produce one segments entry per input utterance, in the same order, keeping the same speakers and timing.",
+              "Use the segment-N ids from the utterances list as segment.id values. Do not invent different segment ids.",
               "Segment IDs and item IDs must be unique strings.",
               "commitments: extract explicit promises between people (what someone said they would do). Prefer spoken promises over generic todos.",
               "direction: i_owe if the user/self speaker promised; they_owe if another person promised; mutual if both; unclear otherwise.",
-              "For commitments, decisions, and memoryCandidates: quote must be an exact or near-exact excerpt from a segment; segmentId must match that segment; leave dueAt null when no date was stated; set confidence low/medium/high.",
+              "For commitments, decisions, and memoryCandidates: quote must be an exact or near-exact excerpt from a segment; segmentId must be that segment's segment-N id; leave dueAt null when no date was stated; set confidence low/medium/high.",
               "memoryCandidates: durable preferences, facts, follow-ups, or recurring topics worth remembering about a person.",
               "Do not invent evidence. If unsure of the supporting utterance, set segmentId and quote to null and confidence to low.",
               `Required JSON Schema: ${JSON.stringify(understandingJsonSchema)}`,
@@ -201,7 +154,7 @@ export class OllamaService {
     const segments = longTranscript
       ? segmentsFromRawUtterances(transcript.utterances)
       : authoritativeSegments(transcript, understanding);
-    const segmentsById = buildSegmentLookup(understanding, segments);
+    const segmentsById = buildSegmentLookup(segments);
     const participants = [
       ...new Map(
         understanding.participants
@@ -215,7 +168,7 @@ export class OllamaService {
     const decisions: DecisionInsight[] = understanding.decisions
       .filter((decision) => decision.text.trim())
       .map((decision, index) => {
-        const withEvidence = attachEvidence(decision, segmentsById);
+        const withEvidence = attachEvidence(decision, segmentsById, segments);
         return {
           id: `decision-${index + 1}`,
           text: decision.text.trim(),
@@ -229,7 +182,7 @@ export class OllamaService {
     const commitments: CommitmentInsight[] = understanding.commitments
       .filter((item) => item.text.trim())
       .map((item, index) => {
-        const withEvidence = attachEvidence(item, segmentsById);
+        const withEvidence = attachEvidence(item, segmentsById, segments);
         return {
           id: `commitment-${index + 1}`,
           text: item.text.trim(),
@@ -248,7 +201,7 @@ export class OllamaService {
     const memoryCandidates: MemoryCandidateInsight[] = understanding.memoryCandidates
       .filter((item) => item.text.trim())
       .map((item, index) => {
-        const withEvidence = attachEvidence(item, segmentsById);
+        const withEvidence = attachEvidence(item, segmentsById, segments);
         return {
           id: `memory-${index + 1}`,
           personName: item.personName?.trim() || null,

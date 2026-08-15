@@ -89,6 +89,8 @@ export default function ProfileScreen() {
         <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.ink }]}>Personal details</Text>
         <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.line }, !isDark && shadows.card]}>
           <ProfileField label="Name" value={profile.name} placeholder="Your name" icon="person-outline" onChangeText={(value) => update("name", value)} />
+          <ProfileField label="Role or occupation" value={profile.occupation} placeholder="e.g. Founder, student, parent" icon="briefcase-outline" onChangeText={(value) => update("occupation", value)} />
+          <ProfileField label="What brings you to Memory?" value={profile.onboardingGoal} placeholder="Optional" icon="sparkles-outline" onChangeText={(value) => update("onboardingGoal", value)} />
           <ProfileField label="Age" value={profile.age?.toString() ?? ""} placeholder="Optional" icon="calendar-outline" keyboardType="number-pad"
             onChangeText={(value) => { const digits = value.replace(/\D/g, "").slice(0, 3); update("age", digits ? Number(digits) : null); }} />
           <ProfileField label="Gender" value={profile.gender} placeholder="How you describe yourself" icon="people-outline" onChangeText={(value) => update("gender", value)} />

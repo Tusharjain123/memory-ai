@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MIGRATION_5, MIGRATION_6, MIGRATION_7, SCHEMA_VERSION } from "./schema";
+import { MIGRATION_5, MIGRATION_6, MIGRATION_7, MIGRATION_8, SCHEMA_VERSION } from "./schema";
 
 describe("people profile migration", () => {
   it("adds editable profile fields and stable speaker mappings", () => {
-    expect(SCHEMA_VERSION).toBe(7);
+    expect(SCHEMA_VERSION).toBe(8);
     expect(MIGRATION_5).toContain("ADD COLUMN relationship");
     expect(MIGRATION_5).toContain("ADD COLUMN email");
     expect(MIGRATION_5).toContain("ADD COLUMN phone");
@@ -34,5 +34,12 @@ describe("resumable upload migration", () => {
     expect(MIGRATION_7).toContain("ADD COLUMN upload_part_index");
     expect(MIGRATION_7).toContain("ADD COLUMN processing_job_id");
     expect(MIGRATION_7).toContain("ADD COLUMN duration_ms");
+  });
+});
+
+describe("onboarding profile migration", () => {
+  it("stores the user's role and intended use locally", () => {
+    expect(MIGRATION_8).toContain("ADD COLUMN occupation");
+    expect(MIGRATION_8).toContain("ADD COLUMN onboarding_goal");
   });
 });

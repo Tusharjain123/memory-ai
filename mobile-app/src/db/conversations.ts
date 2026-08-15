@@ -188,6 +188,7 @@ export async function saveConversation(
       ...result.participants.map((person) => person.speakerLabel),
     ]);
     const peopleByName = new Map<string, string>();
+    const peopleBySpeakerLabel = new Map<string, string>();
     for (const speakerLabel of speakerLabels) {
       const participant = result.participants.find(
         (person) => person.speakerLabel === speakerLabel,
@@ -230,6 +231,7 @@ export async function saveConversation(
          (conversation_id,person_id,speaker_label) VALUES (?,?,?)`,
         id, personId, speakerLabel,
       );
+      peopleBySpeakerLabel.set(speakerLabel, personId);
     }
 
     const segmentIdMap = new Map<string, string>();
@@ -272,6 +274,9 @@ export async function saveConversation(
       if (!ownerId && item.ownerName) {
         ownerId = await resolvePersonIdByName(database, item.ownerName, now);
         if (ownerId) peopleByName.set(item.ownerName.toLocaleLowerCase(), ownerId);
+      }
+      if (!ownerId && !item.ownerName && item.speakerLabel) {
+        ownerId = peopleBySpeakerLabel.get(item.speakerLabel) ?? null;
       }
       let counterpartyId = item.counterpartyName
         ? peopleByName.get(item.counterpartyName.toLocaleLowerCase()) ?? null

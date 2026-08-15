@@ -300,7 +300,7 @@ export default function MemoryReviewScreen() {
       {items.length > 0 ? (
         <Pressable
           onPress={() => router.replace(`/conversation/${conversation.id}` as never)}
-          style={[styles.primary, { backgroundColor: colors.ink }]}
+          style={[styles.primary, { backgroundColor: colors.accent }]}
         >
           <Text style={styles.primaryText}>Continue to memory</Text>
         </Pressable>

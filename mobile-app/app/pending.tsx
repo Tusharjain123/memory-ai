@@ -1,18 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   deletePendingRecording,
   listPendingRecordings,
-  setPendingRecordingError,
   type PendingRecording,
 } from "../src/db/pendingRecordings";
-import { saveConversation } from "../src/db/conversations";
 import { RecordingPlayer } from "../src/components/RecordingPlayer";
 import { useClipPlayer } from "../src/hooks/useClipPlayer";
-import { processRecording } from "../src/services/processing";
+import {
+  ensureProcessing,
+  getProcessingSnapshot,
+  isProcessingPending,
+  subscribeProcessing,
+  type ProcessingJobSnapshot,
+} from "../src/services/processingOrchestrator";
 import { relativeDate } from "../src/utils/format";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
@@ -20,58 +24,47 @@ export default function PendingRecordingsScreen() {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
   const [items, setItems] = useState<PendingRecording[]>([]);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-  const [processingProgress, setProcessingProgress] = useState<number | null>(null);
+  const [snapshots, setSnapshots] = useState<Record<string, ProcessingJobSnapshot>>({});
   const [listenId, setListenId] = useState<string | null>(null);
-  const autoResumeRef = useRef<string | null>(null);
   const listening = items.find((item) => item.id === listenId);
   const player = useClipPlayer(listening?.recordingUri);
 
   const load = useCallback(async () => setItems(await listPendingRecordings()), []);
 
+  useEffect(() => {
+    let active = true;
+    return subscribeProcessing((snapshot) => {
+      if (!active) return;
+      setSnapshots((current) => ({ ...current, [snapshot.pendingId]: snapshot }));
+      if (snapshot.status === "complete" && snapshot.conversationId) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        void load();
+        router.replace(`/review/${snapshot.conversationId}` as never);
+      }
+      if (snapshot.status === "failed") {
+        void load();
+      }
+    });
+  }, [load, router]);
+
+  useFocusEffect(useCallback(() => {
+    void load();
+  }, [load]));
+
   async function resume(item: PendingRecording): Promise<void> {
-    if (processingId) return;
+    if (isProcessingPending(item.id)) return;
     void Haptics.selectionAsync();
-    setProcessingId(item.id);
-    setProcessingProgress(item.processingJobId ? 10 : 0);
     try {
-      const result = await processRecording(item.recordingUri, {
-        pendingId: item.id,
-        durationMs: item.durationMs ?? undefined,
-        resumeUploadId: item.uploadId,
-        startPartIndex: item.uploadPartIndex ?? 0,
-        onProgress: setProcessingProgress,
-      });
-      const conversationId = await saveConversation(result, item.recordingUri, item.id);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace(`/review/${conversationId}` as never);
+      await ensureProcessing(item.id);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Processing is unavailable";
-      await setPendingRecordingError(item.id, message);
       await load();
       Alert.alert(
         "Still safely saved",
         `${message}\n\nYour audio is safe on this device. Try again when your connection and backend are available.`,
       );
-    } finally {
-      setProcessingId(null);
-      setProcessingProgress(null);
     }
   }
-
-  useFocusEffect(useCallback(() => {
-    void load().then(async () => {
-      const loaded = await listPendingRecordings();
-      setItems(loaded);
-      const queued = loaded.find(
-        (item) => item.processingJobId && !item.lastError,
-      );
-      if (queued && autoResumeRef.current !== queued.id && !processingId) {
-        autoResumeRef.current = queued.id;
-        void resume(queued);
-      }
-    });
-  }, [load, processingId]));
 
   function confirmRemove(item: PendingRecording): void {
     Alert.alert("Remove this recording?", "The unprocessed audio will be permanently deleted from this device.", [
@@ -86,6 +79,10 @@ export default function PendingRecordingsScreen() {
     ]);
   }
 
+  const anyRunning = items.some((item) => isProcessingPending(item.id)
+    || snapshots[item.id]?.status === "running"
+    || getProcessingSnapshot(item.id)?.status === "running");
+
   return (
     <View style={[styles.page, { backgroundColor: colors.background }]}>
       <FlatList
@@ -96,7 +93,9 @@ export default function PendingRecordingsScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>Continue processing</Text>
-            <Text style={[styles.intro, { color: colors.muted }]}>Upload and transcription continue here in the background. You can leave and come back anytime.</Text>
+            <Text style={[styles.intro, { color: colors.muted }]}>
+              Transcription keeps running while Memory is open. You can leave this screen. If the app was closed, reopen it to finish.
+            </Text>
           </View>
         }
         ListEmptyComponent={
@@ -111,14 +110,18 @@ export default function PendingRecordingsScreen() {
           </View>
         }
         renderItem={({ item, index }) => {
-          const isProcessing = processingId === item.id;
-          const statusLabel = isProcessing && processingProgress != null
-            ? ` · ${processingProgress}%`
-            : item.processingJobId
+          const snapshot = snapshots[item.id] ?? getProcessingSnapshot(item.id);
+          const isProcessing = isProcessingPending(item.id) || snapshot?.status === "running";
+          const progress = snapshot?.progress;
+          const statusLabel = isProcessing && progress != null
+            ? ` · ${progress}%`
+            : isProcessing
               ? " · Transcribing"
-              : item.uploadId
-                ? " · Upload paused"
-                : " · Waiting securely";
+              : item.processingJobId
+                ? " · Queued"
+                : item.uploadId
+                  ? " · Upload paused"
+                  : " · Waiting securely";
           return (
             <View style={[styles.card, { backgroundColor: colors.surface }, !isDark && shadows.card, index > 0 && { marginTop: spacing.sm }]}>
               <View style={styles.cardTop}>
@@ -134,7 +137,7 @@ export default function PendingRecordingsScreen() {
                 </View>
                 <Ionicons name="lock-closed" size={16} color={colors.sage} />
               </View>
-              {item.lastError ? (
+              {item.lastError || snapshot?.error ? (
                 <View style={[styles.note, { backgroundColor: colors.surfaceMuted }]}>
                   <Ionicons name="information-circle-outline" size={17} color={colors.muted} />
                   <Text numberOfLines={2} style={[styles.noteText, { color: colors.muted }]}>Last attempt didn’t finish. Your audio was kept.</Text>
@@ -152,7 +155,7 @@ export default function PendingRecordingsScreen() {
               <View style={styles.actions}>
                 <Pressable
                   accessibilityRole="button"
-                  disabled={processingId !== null}
+                  disabled={isProcessing}
                   onPress={() => void resume(item)}
                   style={({ pressed }) => [styles.retry, { backgroundColor: colors.ink }, pressed && { opacity: 0.78 }]}
                 >
@@ -178,7 +181,7 @@ export default function PendingRecordingsScreen() {
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  disabled={processingId !== null}
+                  disabled={anyRunning && isProcessing}
                   onPress={() => confirmRemove(item)}
                   style={({ pressed }) => [styles.remove, pressed && { opacity: 0.55 }]}
                 >

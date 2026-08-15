@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +9,9 @@ import { listConversations, type ConversationListItem } from "../src/db/conversa
 import { listPendingRecordings } from "../src/db/pendingRecordings";
 import { countOpenCommitments, countPendingReviews, listPendingReviewConversations } from "../src/db/commitments";
 import { MemoryListSkeleton } from "../src/components/ui";
+import { FirstRunGuide, type OnboardingDetails } from "../src/components/FirstRunGuide";
+import { EMPTY_PROFILE, saveUserProfile } from "../src/db/profile";
+import { completeOnboarding, shouldShowOnboarding } from "../src/services/onboarding";
 import { formatDuration, greeting, relativeDate } from "../src/utils/format";
 import { radii, shadows, spacing, type AppColors, typeScale, useAppTheme } from "../src/theme";
 
@@ -71,6 +74,11 @@ export default function HomeScreen() {
   const [reviewInbox, setReviewInbox] = useState<Array<{ conversationId: string; title: string; pendingCount: number }>>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void shouldShowOnboarding().then(setShowOnboarding).catch(() => setShowOnboarding(false));
+  }, []);
 
   const load = useCallback(async () => {
     const [conversations, pending, commitments, reviews, inbox] = await Promise.all([
@@ -102,6 +110,19 @@ export default function HomeScreen() {
       params: { question: clean, autoSubmit: "1" },
     } as never);
   }
+
+  async function finishOnboarding(destination: "home" | "record", details?: OnboardingDetails): Promise<void> {
+    if (details && Object.values(details).some((value) => value.trim())) {
+      await saveUserProfile({ ...EMPTY_PROFILE, ...details });
+    }
+    await completeOnboarding();
+    setShowOnboarding(false);
+    if (destination === "record") record();
+  }
+
+  // Avoid flashing the dashboard before the first-run check completes.
+  if (showOnboarding === null) return <View style={[styles.page, { backgroundColor: colors.background }]} />;
+  if (showOnboarding) return <FirstRunGuide onFinish={finishOnboarding} />;
 
   return (
     <View style={[styles.page, { backgroundColor: colors.background }]}>
