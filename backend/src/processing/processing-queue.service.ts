@@ -5,16 +5,14 @@ import {
   OnModuleInit,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import type {
-  ProcessedConversation,
-  ProcessingJobState,
-} from "../contracts";
+import type { ProcessingJobState } from "../contracts";
 import { Job, Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { hostname } from "node:os";
 import { DeepgramService } from "./deepgram.service.js";
 import { OllamaService } from "./ollama.service.js";
 import { TempAudioService } from "./temp-audio.service.js";
+import { ProcessingResultStore } from "./processing-result.store.js";
 import { createProcessingJobId } from "./job-capability.js";
 import { describeErrorCause } from "./fetch-with-timeout.js";
 
@@ -24,6 +22,10 @@ type ProcessingJob = {
   mimetype: string;
   keyterms?: string[];
   durationMs?: number;
+};
+
+export type ProcessingJobStored = {
+  stored: true;
 };
 
 export const RESULT_TTL_MS = 4 * 60 * 60_000;
@@ -40,14 +42,15 @@ export function processingQueueName(
 export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ProcessingQueueService.name);
   private connection?: Redis;
-  private queue?: Queue<ProcessingJob, ProcessedConversation>;
-  private worker?: Worker<ProcessingJob, ProcessedConversation>;
+  private queue?: Queue<ProcessingJob, ProcessingJobStored>;
+  private worker?: Worker<ProcessingJob, ProcessingJobStored>;
   private sweepTimer?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly deepgram: DeepgramService,
     private readonly ollama: OllamaService,
     private readonly tempAudio: TempAudioService,
+    private readonly results: ProcessingResultStore,
   ) {}
 
   onModuleInit(): void {
@@ -59,9 +62,9 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
     this.connection = connection;
     const queueName = processingQueueName();
     this.queue = new Queue(queueName, { connection });
-    this.worker = new Worker<ProcessingJob, ProcessedConversation>(
+    this.worker = new Worker<ProcessingJob, ProcessingJobStored>(
       queueName,
-      async (job: Job<ProcessingJob>) => {
+      async (job: Job<ProcessingJob, ProcessingJobStored>) => {
         try {
           await job.updateProgress(15);
           const transcript = await this.deepgram.transcribe(
@@ -82,8 +85,9 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
           );
           await job.updateProgress(70);
           const result = await this.ollama.assemble(transcript);
+          await this.results.save(String(job.id), result, RESULT_TTL_MS);
           await job.updateProgress(100);
-          return result;
+          return { stored: true };
         } finally {
           await this.tempAudio.remove(job.data.directory);
         }
@@ -109,11 +113,13 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   async sweepExpiredResults(): Promise<void> {
-    if (!this.queue) return;
-    await Promise.all([
-      this.queue.clean(RESULT_TTL_MS, 1_000, "completed"),
-      this.queue.clean(RESULT_TTL_MS, 1_000, "failed"),
-    ]);
+    const jobs = this.queue
+      ? Promise.all([
+          this.queue.clean(RESULT_TTL_MS, 1_000, "completed"),
+          this.queue.clean(RESULT_TTL_MS, 1_000, "failed"),
+        ])
+      : Promise.resolve();
+    await Promise.all([jobs, this.results.sweepExpired()]);
   }
 
   private runResultSweep(): void {
@@ -148,8 +154,11 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
     if (!job) return { status: "failed", jobId, error: "Processing job expired or was not found" };
     const state = await job.getState();
     if (state === "completed") {
-      const result = job.returnvalue;
+      const result = await this.results.take(jobId);
       await job.remove();
+      if (!result) {
+        return { status: "failed", jobId, error: "Processing job expired or was not found" };
+      }
       return { status: "complete", jobId, result };
     }
     if (state === "failed") {
