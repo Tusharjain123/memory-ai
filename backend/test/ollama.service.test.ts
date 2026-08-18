@@ -248,4 +248,62 @@ describe("OllamaService", () => {
     expect(result.embeddings).toEqual([]);
     expect(result.commitments).toHaveLength(1);
   });
+
+  it("retries undici fetch failed then succeeds", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }),
+      }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: { content: JSON.stringify(understanding) } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const service = new OllamaService();
+
+    const result = await service.understand({
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{ speaker: 0, startMs: 0, endMs: 2_000, text: "Aaj deploy karenge." }],
+    });
+
+    expect(result.title).toBe("Deployment planning");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("wraps leftover network errors as Understanding failed", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }),
+      }),
+    ));
+    const service = new OllamaService();
+
+    await expect(service.understand({
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{ speaker: 0, startMs: 0, endMs: 2_000, text: "Aaj deploy karenge." }],
+    })).rejects.toThrow("Understanding failed: fetch failed (UND_ERR_SOCKET: other side closed)");
+  });
+
+  it("does not retry a full request deadline as fetch failed", async () => {
+    const timeout = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("Headers Timeout Error"), { code: "UND_ERR_HEADERS_TIMEOUT" }),
+    });
+    const fetchMock = vi.fn().mockRejectedValue(timeout);
+    vi.stubGlobal("fetch", fetchMock);
+    const service = new OllamaService();
+
+    await expect(service.understand({
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{ speaker: 0, startMs: 0, endMs: 2_000, text: "Aaj deploy karenge." }],
+    })).rejects.toThrow(/Understanding timed out after \d+s/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

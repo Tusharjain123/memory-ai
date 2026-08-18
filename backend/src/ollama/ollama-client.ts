@@ -1,4 +1,5 @@
 import { ServiceUnavailableException } from "@nestjs/common";
+import { fetchWithTimeout } from "../processing/fetch-with-timeout.js";
 
 export type OllamaConnection = {
   baseUrl: string;
@@ -64,24 +65,20 @@ export async function ollamaFetch(
       : process.env.OLLAMA_EMBED_TIMEOUT_MS,
     workload === "chat" ? 300_000 : 120_000,
   );
-  return fetch(`${connection.baseUrl}${path}`, {
+  return fetchWithTimeout(`${connection.baseUrl}${path}`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  }, timeoutMs);
 }
 
 export async function ollamaModels(
   workload: OllamaWorkload,
 ): Promise<string[]> {
   const connection = resolveOllamaWorkloadConnection(workload);
-  const response = await fetch(`${connection.baseUrl}/api/tags`, {
+  const response = await fetchWithTimeout(`${connection.baseUrl}/api/tags`, {
     headers: ollamaHeaders(connection, false),
-    signal: AbortSignal.timeout(
-      positiveTimeout(process.env.OLLAMA_DISCOVERY_TIMEOUT_MS, 10_000),
-    ),
-  });
+  }, positiveTimeout(process.env.OLLAMA_DISCOVERY_TIMEOUT_MS, 10_000));
   if (!response.ok) {
     throw new ServiceUnavailableException(
       `Ollama ${workload} model discovery failed (${response.status})`,

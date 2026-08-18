@@ -239,6 +239,44 @@ describe("DeepgramService", () => {
     }
   });
 
+  it("retries Deepgram fetch failed then succeeds", async () => {
+    process.env.DEEPGRAM_API_KEY = "test-key";
+    const directory = await mkdtemp(join(tmpdir(), "memory-ai-test-"));
+    const audioPath = join(directory, "sample.m4a");
+    await writeFile(audioPath, "fake audio");
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }),
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        metadata: { duration: 2.5 },
+        results: {
+          channels: [{ alternatives: [{ transcript: "Aaj deploy karenge after the retry." }] }],
+          utterances: [{
+            speaker: 0,
+            start: 0,
+            end: 2.5,
+            transcript: "Aaj deploy karenge after the retry.",
+          }],
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await new DeepgramService().transcribe(audioPath, "audio/mp4");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.rawTranscript).toContain("deploy");
+      expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+        expect.objectContaining({
+          dispatcher: expect.any(Object),
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("applies env model and language and maps detected languages", async () => {
     process.env.DEEPGRAM_API_KEY = "test-key";
     process.env.DEEPGRAM_MODEL = "nova-3";

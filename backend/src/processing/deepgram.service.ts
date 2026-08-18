@@ -8,6 +8,12 @@ import {
   probeAudio,
 } from "./audio-probe.js";
 import {
+  describeFetchError,
+  fetchWithTimeout,
+  isDeadlineError,
+  isRetryableNetworkError,
+} from "./fetch-with-timeout.js";
+import {
   assertWithinDurationLimit,
 } from "./audio-limits.js";
 import {
@@ -236,7 +242,7 @@ export class DeepgramService {
     for (let attempt = 0; attempt < DEEPGRAM_RETRY_ATTEMPTS; attempt += 1) {
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await fetchWithTimeout(url, {
           method: "POST",
           headers: {
             Authorization: `Token ${apiKey}`,
@@ -244,20 +250,24 @@ export class DeepgramService {
             "Content-Length": String(audio.byteLength),
           },
           body: audio,
-          signal: AbortSignal.timeout(timeoutMs),
-        });
+        }, timeoutMs);
       } catch (error) {
-        if (error instanceof Error && error.name === "TimeoutError") {
+        if (isDeadlineError(error)) {
           lastFailure = new ServiceUnavailableException(
             `Transcription timed out after ${Math.round(timeoutMs / 1000)}s (${Math.round(durationSec / 60)}m audio)`,
           );
-          if (attempt < DEEPGRAM_RETRY_ATTEMPTS - 1) {
-            await sleep(500 * 2 ** attempt);
-            continue;
-          }
-          throw lastFailure;
+        } else if (isRetryableNetworkError(error)) {
+          lastFailure = new ServiceUnavailableException(
+            `Transcription failed: ${describeFetchError(error)}`,
+          );
+        } else {
+          throw error;
         }
-        throw error;
+        if (attempt < DEEPGRAM_RETRY_ATTEMPTS - 1) {
+          await sleep(500 * 2 ** attempt);
+          continue;
+        }
+        throw lastFailure;
       }
 
       if (response.ok) {

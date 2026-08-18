@@ -21,6 +21,11 @@ import {
 import { createOpenAiEmbeddings } from "../embeddings/openai-embeddings.js";
 import { computeOllamaChatTimeoutMs } from "./audio-probe.js";
 import {
+  describeFetchError,
+  isDeadlineError,
+  isRetryableNetworkError,
+} from "./fetch-with-timeout.js";
+import {
   isLongTranscript,
   prepareUnderstandingUtterances,
   segmentsFromRawUtterances,
@@ -30,6 +35,19 @@ import {
   buildSegmentLookup,
   formatUtteranceForUnderstanding,
 } from "./evidence-attach.js";
+
+const OLLAMA_NETWORK_RETRY_ATTEMPTS = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function wrapUnderstandingError(error: unknown): ServiceUnavailableException {
+  if (error instanceof ServiceUnavailableException) return error;
+  return new ServiceUnavailableException(
+    `Understanding failed: ${describeFetchError(error)}`,
+  );
+}
 
 @Injectable()
 export class OllamaService {
@@ -47,58 +65,49 @@ export class OllamaService {
     const timeoutMs = computeOllamaChatTimeoutMs(
       durationSec ?? transcript.durationMs / 1000,
     );
-    let response: Response;
-    try {
-      response = await ollamaFetch("chat", "/api/chat", {
-        model: process.env.OLLAMA_CHAT_MODEL ?? "qwen3",
-        stream: false,
-        think: false,
-        format: ollamaStructuredFormat(understandingJsonSchema),
-        messages: [
-          {
-            role: "system",
-            content: [
-              "Return valid JSON only, with no prose or markdown.",
-              "Extract faithful structured meeting memory from the transcript utterances.",
-              "Preserve Hindi-English code switching and speaker meaning exactly.",
-              "Never invent names, owners, dates, decisions, commitments, facts, or spoken words.",
-              "cleanText / cleanTranscript: fix only obvious ASR typos, casing, and punctuation. Do not paraphrase, summarize, reorder, or add words.",
-              "romanHinglishText / romanHinglishTranscript: romanize Hindi words faithfully into Latin script; keep English words as English; do not invent content.",
-              "Produce one segments entry per input utterance, in the same order, keeping the same speakers and timing.",
-              "Use the segment-N ids from the utterances list as segment.id values. Do not invent different segment ids.",
-              "Segment IDs and item IDs must be unique strings.",
-              "commitments: extract explicit promises between people (what someone said they would do). Prefer spoken promises over generic todos.",
-              "direction: i_owe if the user/self speaker promised; they_owe if another person promised; mutual if both; unclear otherwise.",
-              "For commitments, decisions, and memoryCandidates: quote must be an exact or near-exact excerpt from a segment; segmentId must be that segment's segment-N id; leave dueAt null when no date was stated; set confidence low/medium/high.",
-              "memoryCandidates: durable preferences, facts, follow-ups, or recurring topics worth remembering about a person.",
-              "Do not invent evidence. If unsure of the supporting utterance, set segmentId and quote to null and confidence to low.",
-              `Required JSON Schema: ${JSON.stringify(understandingJsonSchema)}`,
-            ].join("\n"),
-          },
-          {
-            role: "user",
-            content: [
-              `Detected languages: ${transcript.language}`,
-              longRecording
-                ? "This is a long recording. Work from the sampled utterances below; do not invent missing sections."
-                : "Keep cleaned and Hinglish text faithful to each utterance below.",
-              longRecording && transcript.rawTranscript.length > 8_000
-                ? `Transcript excerpt:\n${transcript.rawTranscript.slice(0, 8_000)}`
-                : null,
-              "Utterances:",
-              speakerTranscript || transcript.rawTranscript,
-            ].filter(Boolean).join("\n"),
-          },
-        ],
-      }, timeoutMs);
-    } catch (error) {
-      if (error instanceof Error && error.name === "TimeoutError") {
-        throw new ServiceUnavailableException(
-          `Understanding timed out after ${Math.round(timeoutMs / 1000)}s (${transcript.rawTranscript.length} chars)`,
-        );
-      }
-      throw error;
-    }
+    const body = {
+      model: process.env.OLLAMA_CHAT_MODEL ?? "qwen3",
+      stream: false,
+      think: false,
+      format: ollamaStructuredFormat(understandingJsonSchema),
+      messages: [
+        {
+          role: "system",
+          content: [
+            "Return valid JSON only, with no prose or markdown.",
+            "Extract faithful structured meeting memory from the transcript utterances.",
+            "Preserve Hindi-English code switching and speaker meaning exactly.",
+            "Never invent names, owners, dates, decisions, commitments, facts, or spoken words.",
+            "cleanText / cleanTranscript: fix only obvious ASR typos, casing, and punctuation. Do not paraphrase, summarize, reorder, or add words.",
+            "romanHinglishText / romanHinglishTranscript: romanize Hindi words faithfully into Latin script; keep English words as English; do not invent content.",
+            "Produce one segments entry per input utterance, in the same order, keeping the same speakers and timing.",
+            "Use the segment-N ids from the utterances list as segment.id values. Do not invent different segment ids.",
+            "Segment IDs and item IDs must be unique strings.",
+            "commitments: extract explicit promises between people (what someone said they would do). Prefer spoken promises over generic todos.",
+            "direction: i_owe if the user/self speaker promised; they_owe if another person promised; mutual if both; unclear otherwise.",
+            "For commitments, decisions, and memoryCandidates: quote must be an exact or near-exact excerpt from a segment; segmentId must be that segment's segment-N id; leave dueAt null when no date was stated; set confidence low/medium/high.",
+            "memoryCandidates: durable preferences, facts, follow-ups, or recurring topics worth remembering about a person.",
+            "Do not invent evidence. If unsure of the supporting utterance, set segmentId and quote to null and confidence to low.",
+            `Required JSON Schema: ${JSON.stringify(understandingJsonSchema)}`,
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `Detected languages: ${transcript.language}`,
+            longRecording
+              ? "This is a long recording. Work from the sampled utterances below; do not invent missing sections."
+              : "Keep cleaned and Hinglish text faithful to each utterance below.",
+            longRecording && transcript.rawTranscript.length > 8_000
+              ? `Transcript excerpt:\n${transcript.rawTranscript.slice(0, 8_000)}`
+              : null,
+            "Utterances:",
+            speakerTranscript || transcript.rawTranscript,
+          ].filter(Boolean).join("\n"),
+        },
+      ],
+    };
+    const response = await this.chatWithRetry(body, timeoutMs, transcript.rawTranscript.length);
     if (!response.ok) {
       throw new ServiceUnavailableException(`Understanding failed (${response.status})`);
     }
@@ -110,6 +119,35 @@ export class OllamaService {
       throw new ServiceUnavailableException("Understanding returned no content");
     }
     return understandingSchema.parse(JSON.parse(content));
+  }
+
+  private async chatWithRetry(
+    body: unknown,
+    timeoutMs: number,
+    transcriptChars: number,
+  ): Promise<Response> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < OLLAMA_NETWORK_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        return await ollamaFetch("chat", "/api/chat", body, timeoutMs);
+      } catch (error) {
+        lastError = error;
+        if (isDeadlineError(error)) {
+          throw new ServiceUnavailableException(
+            `Understanding timed out after ${Math.round(timeoutMs / 1000)}s (${transcriptChars} chars)`,
+          );
+        }
+        if (attempt < OLLAMA_NETWORK_RETRY_ATTEMPTS - 1 && isRetryableNetworkError(error)) {
+          this.logger.warn(
+            `Understanding fetch retry ${attempt + 1}/${OLLAMA_NETWORK_RETRY_ATTEMPTS - 1}: ${describeFetchError(error)}`,
+          );
+          await sleep(500 * 2 ** attempt);
+          continue;
+        }
+        throw wrapUnderstandingError(error);
+      }
+    }
+    throw wrapUnderstandingError(lastError);
   }
 
   async embed(

@@ -29,6 +29,7 @@ describe("remote Ollama connection", () => {
           "Content-Type": "application/json",
         }),
         signal: expect.any(AbortSignal),
+        dispatcher: expect.any(Object),
       }),
     );
   });
@@ -49,6 +50,7 @@ describe("remote Ollama connection", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-secret",
         }),
+        dispatcher: expect.any(Object),
       }),
     );
   });
@@ -70,6 +72,7 @@ describe("remote Ollama connection", () => {
       expect.objectContaining({
         headers: { Authorization: "Bearer cloud-secret" },
         signal: expect.any(AbortSignal),
+        dispatcher: expect.any(Object),
       }),
     );
   });

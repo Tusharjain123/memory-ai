@@ -16,6 +16,7 @@ import { DeepgramService } from "./deepgram.service.js";
 import { OllamaService } from "./ollama.service.js";
 import { TempAudioService } from "./temp-audio.service.js";
 import { createProcessingJobId } from "./job-capability.js";
+import { describeErrorCause } from "./fetch-with-timeout.js";
 
 type ProcessingJob = {
   audioPath: string;
@@ -93,8 +94,11 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
       },
     );
     this.worker.on("failed", (job, error) => {
+      const cause = describeErrorCause(error);
       this.logger.error(
-        `Processing job ${job?.id ?? "unknown"} failed: ${error.message}`,
+        `Processing job ${job?.id ?? "unknown"} failed: ${error.message}${
+          cause ? ` (${cause})` : ""
+        }`,
       );
     });
     this.runResultSweep();
