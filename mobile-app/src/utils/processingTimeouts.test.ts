@@ -4,6 +4,7 @@ import {
   MAX_RECORDING_MS,
   processingStageLabel,
   QUEUED_PROGRESS,
+  UPLOAD_PART_BYTES,
   UPLOAD_PROGRESS_START,
   uploadPartProgress,
 } from "./processingTimeouts";
@@ -29,7 +30,9 @@ describe("MAX_RECORDING_MS", () => {
 describe("upload progress", () => {
   it("starts at 1% before the first part and reaches 15% when upload completes", () => {
     expect(uploadPartProgress(0, 4)).toBe(UPLOAD_PROGRESS_START);
+    expect(uploadPartProgress(0.5, 4)).toBeGreaterThan(UPLOAD_PROGRESS_START);
     expect(uploadPartProgress(4, 4)).toBe(15);
+    expect(UPLOAD_PART_BYTES).toBe(4_194_304);
     expect(processingStageLabel(1)).toBe("Uploading");
     expect(processingStageLabel(QUEUED_PROGRESS)).toBe("Preparing");
     expect(processingStageLabel(40)).toBe("Transcribing");

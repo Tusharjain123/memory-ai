@@ -50,6 +50,71 @@ function limitError(error: unknown): never {
   throw new BadRequestException(message);
 }
 
+type MultipartUploadPart = {
+  type: string;
+  fieldname?: string;
+  value?: unknown;
+  file?: NodeJS.ReadableStream;
+  truncated?: boolean;
+};
+
+export async function saveUploadPartFromMultipart(
+  parts: AsyncIterable<MultipartUploadPart>,
+  savePart: (
+    uploadId: string,
+    partIndex: number,
+    offset: number,
+    stream: NodeJS.ReadableStream,
+  ) => Promise<{ receivedBytes: number }>,
+  maxPartBytes: number,
+): Promise<{ receivedBytes: number }> {
+  let uploadId = "";
+  let partIndex = -1;
+  let offset = -1;
+  let saved: { receivedBytes: number } | null = null;
+
+  for await (const part of parts) {
+    if (part.type === "file") {
+      const stream = part.file;
+      if (!stream) {
+        throw new BadRequestException("uploadId, partIndex, offset, and part file are required");
+      }
+      if (!uploadId || partIndex < 0 || offset < 0) {
+        if (typeof (stream as { resume?: () => void }).resume === "function") {
+          (stream as { resume: () => void }).resume();
+        }
+        throw new BadRequestException("uploadId, partIndex, offset, and part file are required");
+      }
+      const truncated = Boolean(
+        part.truncated
+        || (stream as { truncated?: boolean }).truncated,
+      );
+      if (truncated) {
+        if (typeof (stream as { resume?: () => void }).resume === "function") {
+          (stream as { resume: () => void }).resume();
+        }
+        throw new BadRequestException(
+          `upload part exceeds the ${Math.round(maxPartBytes / (1024 * 1024))} MB part limit`,
+        );
+      }
+      saved = await savePart(uploadId, partIndex, offset, stream);
+      continue;
+    }
+    if (part.fieldname === "uploadId") {
+      uploadId = String(part.value ?? "");
+    } else if (part.fieldname === "partIndex") {
+      partIndex = Number(part.value ?? -1);
+    } else if (part.fieldname === "offset") {
+      offset = Number(part.value ?? -1);
+    }
+  }
+
+  if (!saved) {
+    throw new BadRequestException("uploadId, partIndex, offset, and part file are required");
+  }
+  return saved;
+}
+
 @Controller("v1/conversations")
 export class ProcessingController {
   constructor(
@@ -179,36 +244,12 @@ export class ProcessingController {
     if (!request.isMultipart()) {
       throw new BadRequestException("multipart/form-data is required");
     }
-
-    let uploadId = "";
-    let partIndex = -1;
-    let offset = -1;
-    let stream: NodeJS.ReadableStream | null = null;
-    let truncated = false;
-
-    for await (const part of request.parts()) {
-      if (part.type === "file") {
-        stream = part.file;
-        truncated = Boolean(part.file.truncated);
-      } else if (part.fieldname === "uploadId") {
-        uploadId = String(part.value ?? "");
-      } else if (part.fieldname === "partIndex") {
-        partIndex = Number(part.value ?? -1);
-      } else if (part.fieldname === "offset") {
-        offset = Number(part.value ?? -1);
-      }
-    }
-
-    if (!uploadId || !stream || partIndex < 0 || offset < 0) {
-      throw new BadRequestException("uploadId, partIndex, offset, and part file are required");
-    }
-    if (truncated) {
-      throw new BadRequestException(
-        `upload part exceeds the ${Math.round(uploadPartBytes() / (1024 * 1024))} MB part limit`,
-      );
-    }
-
-    return this.uploads.savePart(uploadId, partIndex, offset, stream);
+    return saveUploadPartFromMultipart(
+      request.parts(),
+      (uploadId, partIndex, offset, stream) =>
+        this.uploads.savePart(uploadId, partIndex, offset, stream),
+      uploadPartBytes(),
+    );
   }
 
   @Post("process/upload/complete")

@@ -1,6 +1,6 @@
 export const MAX_AUDIO_DURATION_SEC = 10_800; // 3 hours
 export const MAX_UPLOAD_BYTES = 209_715_200; // 200 MB
-export const UPLOAD_PART_BYTES = 20_971_520; // 20 MB
+export const UPLOAD_PART_BYTES = 4_194_304; // 4 MB parts so cellular uploads finish
 export const SINGLE_UPLOAD_MAX_BYTES = 52_428_800; // 50 MB fast path on mobile
 
 export function maxAudioDurationSec(): number {

@@ -11,7 +11,7 @@ export function computePollDeadlineMs(durationSec?: number): number {
 
 export const MAX_RECORDING_MS = 3 * 60 * 60_000;
 export const SINGLE_UPLOAD_MAX_BYTES = 52_428_800;
-export const UPLOAD_PART_BYTES = 20_971_520;
+export const UPLOAD_PART_BYTES = 4_194_304;
 export const UPLOAD_PROGRESS_START = 1;
 export const UPLOAD_PROGRESS_MAX = 15;
 export const QUEUED_PROGRESS = 15;

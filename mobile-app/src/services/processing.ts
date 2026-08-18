@@ -36,12 +36,12 @@ export function shouldPollExistingJob(pending: {
   return Boolean(pending.processingJobId && !pending.lastError);
 }
 
-/** Upload sessions are deleted after a failed transcription job. */
+/** Upload sessions are deleted after a failed attempt; part size may also change. */
 export function shouldReuseUploadSession(pending: {
   processingJobId: string | null;
   lastError: string | null;
 }): boolean {
-  return !(pending.lastError && pending.processingJobId);
+  return !pending.lastError;
 }
 
 export async function estimateDurationSec(uri: string): Promise<number | undefined> {
@@ -203,6 +203,46 @@ async function uploadSingle(
   return queued.jobId;
 }
 
+async function uploadPartFile(
+  FileSystem: typeof import("expo-file-system/legacy"),
+  chunkUri: string,
+  params: {
+    uploadId: string;
+    partIndex: number;
+    partCount: number;
+    offset: number;
+    partLength: number;
+    onProgress?: (progress: number) => void;
+  },
+): Promise<void> {
+  const url = `${API_URL}/v1/conversations/process/upload/part`;
+  const task = FileSystem.createUploadTask(
+    url,
+    chunkUri,
+    {
+      httpMethod: "POST",
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: "part",
+      mimeType: "application/octet-stream",
+      parameters: {
+        uploadId: params.uploadId,
+        partIndex: String(params.partIndex),
+        offset: String(params.offset),
+      },
+    },
+    (data) => {
+      const expected = data.totalBytesExpectedToSend || params.partLength;
+      const fraction = expected > 0 ? Math.min(1, data.totalBytesSent / expected) : 0;
+      params.onProgress?.(uploadPartProgress(params.partIndex + fraction, params.partCount));
+    },
+  );
+  const result = await task.uploadAsync();
+  const status = result?.status ?? 0;
+  if (status < 200 || status >= 300) {
+    throw new Error(result?.body || `Upload part failed (${status || "network"})`);
+  }
+}
+
 async function uploadMultipart(
   uri: string,
   totalBytes: number,
@@ -211,10 +251,9 @@ async function uploadMultipart(
   options: ProcessRecordingOptions,
 ): Promise<{ jobId: string; uploadId: string; lastPartIndex: number }> {
   const FileSystem = await import("expo-file-system/legacy");
-  const partSize = UPLOAD_PART_BYTES;
-  const partCount = Math.ceil(totalBytes / partSize);
   let uploadId = options.resumeUploadId ?? null;
   let startPart = options.startPartIndex ?? 0;
+  let partSize = UPLOAD_PART_BYTES;
 
   if (!uploadId) {
     const initResponse = await withRetries(() => fetch(`${API_URL}/v1/conversations/process/upload/init`, {
@@ -231,8 +270,15 @@ async function uploadMultipart(
     if (!initResponse.ok) {
       throw new Error(await initResponse.text() || `Upload init failed (${initResponse.status})`);
     }
-    const initPayload = (await initResponse.json()) as { uploadId: string };
+    const initPayload = (await initResponse.json()) as {
+      uploadId: string;
+      partSizeBytes?: number;
+    };
     uploadId = initPayload.uploadId;
+    if (initPayload.partSizeBytes && initPayload.partSizeBytes > 0) {
+      partSize = initPayload.partSizeBytes;
+    }
+    startPart = 0;
     if (options.pendingId) {
       await updatePendingUploadState(options.pendingId, {
         uploadId,
@@ -242,6 +288,7 @@ async function uploadMultipart(
     }
   }
 
+  const partCount = Math.ceil(totalBytes / partSize);
   options.onProgress?.(uploadPartProgress(startPart, partCount));
   for (let partIndex = startPart; partIndex < partCount; partIndex += 1) {
     options.onProgress?.(uploadPartProgress(partIndex, partCount));
@@ -257,26 +304,19 @@ async function uploadMultipart(
       encoding: FileSystem.EncodingType.Base64,
     });
 
-    await withRetries(async () => {
-      const form = new FormData();
-      form.append("uploadId", uploadId!);
-      form.append("partIndex", String(partIndex));
-      form.append("offset", String(offset));
-      form.append("part", {
-        uri: chunkUri,
-        name: `part-${partIndex}.bin`,
-        type: "application/octet-stream",
-      } as unknown as Blob);
-      const response = await fetch(`${API_URL}/v1/conversations/process/upload/part`, {
-        method: "POST",
-        body: form,
-      });
-      if (!response.ok) {
-        throw new Error(await response.text() || `Upload part failed (${response.status})`);
-      }
-    });
+    try {
+      await withRetries(() => uploadPartFile(FileSystem, chunkUri, {
+        uploadId: uploadId!,
+        partIndex,
+        partCount,
+        offset,
+        partLength: length,
+        ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+      }));
+    } finally {
+      await FileSystem.deleteAsync(chunkUri, { idempotent: true });
+    }
 
-    await FileSystem.deleteAsync(chunkUri, { idempotent: true });
     if (options.pendingId) {
       await updatePendingUploadState(options.pendingId, {
         uploadId,

@@ -1,17 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SINGLE_UPLOAD_MAX_BYTES } from "../utils/processingTimeouts";
+import { SINGLE_UPLOAD_MAX_BYTES, UPLOAD_PART_BYTES } from "../utils/processingTimeouts";
 
 const getInfoAsync = vi.fn();
 const readAsStringAsync = vi.fn();
 const writeAsStringAsync = vi.fn();
 const deleteAsync = vi.fn();
+const createUploadTask = vi.fn();
 
 vi.mock("expo-file-system/legacy", () => ({
   getInfoAsync,
   readAsStringAsync,
   writeAsStringAsync,
   deleteAsync,
+  createUploadTask,
   EncodingType: { Base64: "base64" },
+  FileSystemUploadType: { BINARY_CONTENT: 0, MULTIPART: 1 },
   cacheDirectory: "file:///cache/",
 }));
 
@@ -55,13 +58,13 @@ describe("startProcessing upload routing", () => {
 
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/upload/init")) {
-        return new Response(JSON.stringify({ uploadId: "upload-1", partSizeBytes: totalBytes }), {
+        return new Response(JSON.stringify({
+          uploadId: "upload-1",
+          partSizeBytes: UPLOAD_PART_BYTES,
+        }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
-      if (url.includes("/upload/part")) {
-        return new Response(JSON.stringify({ receivedBytes: totalBytes }), { status: 200 });
       }
       if (url.includes("/upload/complete")) {
         return new Response(JSON.stringify({ status: "queued", jobId: "job-large" }), {
@@ -72,15 +75,21 @@ describe("startProcessing upload routing", () => {
       throw new Error(`Unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
+    createUploadTask.mockImplementation((_url: string, _file: string, _options: unknown, onProgress?: (data: { totalBytesSent: number; totalBytesExpectedToSend: number }) => void) => {
+      onProgress?.({ totalBytesSent: 2_000_000, totalBytesExpectedToSend: 4_194_304 });
+      return {
+        uploadAsync: vi.fn().mockResolvedValue({ status: 200, body: "{\"receivedBytes\":4194304}" }),
+      };
+    });
 
     const result = await startProcessing("file:///large.m4a", { durationMs: 3_600_000 });
 
     expect(result).toEqual({ jobId: "job-large", uploadId: "upload-1" });
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls.some((url) => url.includes("/upload/init"))).toBe(true);
-    expect(urls.filter((url) => url.includes("/upload/part")).length).toBe(3);
     expect(urls.some((url) => url.includes("/upload/complete"))).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(urls.some((url) => url.includes("/upload/part"))).toBe(false);
+    expect(createUploadTask).toHaveBeenCalledTimes(Math.ceil(totalBytes / UPLOAD_PART_BYTES));
   });
 
   it("reports progress before the first multipart part is read", async () => {
@@ -92,13 +101,13 @@ describe("startProcessing upload routing", () => {
 
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/upload/init")) {
-        return new Response(JSON.stringify({ uploadId: "upload-1", partSizeBytes: totalBytes }), {
+        return new Response(JSON.stringify({
+          uploadId: "upload-1",
+          partSizeBytes: UPLOAD_PART_BYTES,
+        }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
-      if (url.includes("/upload/part")) {
-        return new Response(JSON.stringify({ receivedBytes: totalBytes }), { status: 200 });
       }
       if (url.includes("/upload/complete")) {
         return new Response(JSON.stringify({ status: "queued", jobId: "job-large" }), {
@@ -109,6 +118,12 @@ describe("startProcessing upload routing", () => {
       throw new Error(`Unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
+    createUploadTask.mockImplementation((_url: string, _file: string, _options: unknown, onProgress?: (data: { totalBytesSent: number; totalBytesExpectedToSend: number }) => void) => {
+      onProgress?.({ totalBytesSent: 1_000_000, totalBytesExpectedToSend: 4_194_304 });
+      return {
+        uploadAsync: vi.fn().mockResolvedValue({ status: 200, body: "{\"receivedBytes\":4194304}" }),
+      };
+    });
 
     const progress: number[] = [];
     await startProcessing("file:///large.m4a", {
@@ -117,8 +132,10 @@ describe("startProcessing upload routing", () => {
     });
 
     expect(progress[0]).toBe(1);
+    expect(progress.some((value) => value > 1 && value < 15)).toBe(true);
     expect(progress.some((value) => value >= 15)).toBe(true);
     expect(readAsStringAsync.mock.calls.length).toBeGreaterThan(0);
+    expect(createUploadTask).toHaveBeenCalled();
   });
 });
 
@@ -144,7 +161,7 @@ describe("failed-job continue", () => {
     expect(shouldReuseUploadSession({
       processingJobId: null,
       lastError: "Upload part failed",
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it("does not poll a failed job and starts a new upload instead", async () => {
