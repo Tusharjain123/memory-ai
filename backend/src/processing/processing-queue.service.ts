@@ -22,6 +22,7 @@ type ProcessingJob = {
   directory: string;
   mimetype: string;
   keyterms?: string[];
+  durationMs?: number;
 };
 
 export const RESULT_TTL_MS = 4 * 60 * 60_000;
@@ -61,19 +62,24 @@ export class ProcessingQueueService implements OnModuleInit, OnModuleDestroy {
       queueName,
       async (job: Job<ProcessingJob>) => {
         try {
-          await job.updateProgress(10);
+          await job.updateProgress(15);
           const transcript = await this.deepgram.transcribe(
             job.data.audioPath,
             job.data.mimetype,
             {
               keyterms: job.data.keyterms ?? [],
+              ...(job.data.durationMs && job.data.durationMs > 0
+                ? { durationSec: job.data.durationMs / 1000 }
+                : {}),
+              onPrepProgress: async (percent) => {
+                await job.updateProgress(percent);
+              },
               onProgress: async (completed, total) => {
-                const span = 45;
-                await job.updateProgress(10 + Math.round((completed / total) * span));
+                await job.updateProgress(25 + Math.round((completed / total) * 45));
               },
             },
           );
-          await job.updateProgress(55);
+          await job.updateProgress(70);
           const result = await this.ollama.assemble(transcript);
           await job.updateProgress(100);
           return result;

@@ -34,8 +34,23 @@ export type DeepgramResult = {
 
 export type TranscribeOptions = {
   keyterms?: string[];
+  durationSec?: number;
   onProgress?: (completed: number, total: number) => void | Promise<void>;
+  onPrepProgress?: (percent: number) => void | Promise<void>;
 };
+
+const DEEPGRAM_RETRY_ATTEMPTS = 3;
+
+export function isRetryableDeepgramError(status: number, body = ""): boolean {
+  if (status === 408 || status === 429 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+  return /SLOW_UPLOAD|Request upload timeout/i.test(body);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 type DeepgramConfig = {
   model: string;
@@ -82,6 +97,7 @@ export class DeepgramService {
     }
 
     const initialProbe = await probeAudio(audioPath);
+    await options.onPrepProgress?.(18);
     const directory = dirname(audioPath);
     const normalized = await maybeNormalizeQuietAudio(
       audioPath,
@@ -92,8 +108,13 @@ export class DeepgramService {
     if (normalized.boosted) {
       this.logger.log("Applied quiet-audio gain before Deepgram");
     }
+    await options.onPrepProgress?.(20);
 
-    const durationSec = normalized.probe.durationSec || initialProbe.durationSec;
+    const durationSec =
+      normalized.probe.durationSec
+      || initialProbe.durationSec
+      || options.durationSec
+      || 0;
     const durationMs = Math.round(durationSec * 1000);
     if (durationSec > 0) {
       try {
@@ -113,7 +134,12 @@ export class DeepgramService {
         normalized.path,
         directory,
         normalized.probe,
+        durationSec,
+        async (completed, total) => {
+          await options.onPrepProgress?.(20 + Math.round((completed / Math.max(1, total)) * 5));
+        },
       );
+      await options.onPrepProgress?.(25);
       if (chunks.length > 1) {
         this.logger.log(
           `Transcribing ${chunks.length} chunks (${Math.round(durationSec / 60)}m audio)`,
@@ -178,6 +204,7 @@ export class DeepgramService {
       normalized.path,
       directory,
       normalized.probe,
+      durationSec,
     );
     const chunkPayloads = await this.transcribeChunks(
       apiKey,
@@ -204,34 +231,52 @@ export class DeepgramService {
     const audio = await readFile(audioPath);
     const url = buildListenUrl({ model, language }, keyterms);
     const timeoutMs = computeDeepgramTimeoutMs(durationSec);
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Token ${apiKey}`,
-          "Content-Type": mimetype,
-        },
-        body: audio,
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (error) {
-      if (error instanceof Error && error.name === "TimeoutError") {
-        throw new ServiceUnavailableException(
-          `Transcription timed out after ${Math.round(timeoutMs / 1000)}s (${Math.round(durationSec / 60)}m audio)`,
-        );
+    let lastFailure: Error | undefined;
+
+    for (let attempt = 0; attempt < DEEPGRAM_RETRY_ATTEMPTS; attempt += 1) {
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${apiKey}`,
+            "Content-Type": mimetype,
+            "Content-Length": String(audio.byteLength),
+          },
+          body: audio,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "TimeoutError") {
+          lastFailure = new ServiceUnavailableException(
+            `Transcription timed out after ${Math.round(timeoutMs / 1000)}s (${Math.round(durationSec / 60)}m audio)`,
+          );
+          if (attempt < DEEPGRAM_RETRY_ATTEMPTS - 1) {
+            await sleep(500 * 2 ** attempt);
+            continue;
+          }
+          throw lastFailure;
+        }
+        throw error;
       }
-      throw error;
-    }
-    if (!response.ok) {
+
+      if (response.ok) {
+        return (await response.json()) as DeepgramPayload;
+      }
       const detail = (await response.text()).trim().slice(0, 300);
-      throw new ServiceUnavailableException(
+      lastFailure = new ServiceUnavailableException(
         detail
           ? `Transcription failed (${response.status}): ${detail}`
           : `Transcription failed (${response.status})`,
       );
+      if (attempt < DEEPGRAM_RETRY_ATTEMPTS - 1 && isRetryableDeepgramError(response.status, detail)) {
+        await sleep(500 * 2 ** attempt);
+        continue;
+      }
+      throw lastFailure;
     }
-    return (await response.json()) as DeepgramPayload;
+
+    throw lastFailure ?? new ServiceUnavailableException("Transcription failed");
   }
 
   private async transcribeChunks(

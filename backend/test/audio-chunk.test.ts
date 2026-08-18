@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { mergeChunkPayloads } from "../src/processing/deepgram.service.js";
+import { mapSegmentFilesToChunks, resolveChunkDurationSec } from "../src/processing/audio-chunk.js";
+
+describe("resolveChunkDurationSec", () => {
+  it("uses the client duration when ffmpeg probe returns 0", () => {
+    expect(resolveChunkDurationSec({ durationSec: 0, channels: 1 }, 3_600)).toBe(3_600);
+    expect(resolveChunkDurationSec({ durationSec: 120, channels: 1 }, 3_600)).toBe(120);
+  });
+});
+
+describe("mapSegmentFilesToChunks", () => {
+  it("maps one-pass segment files to timed chunks", () => {
+    const chunks = mapSegmentFilesToChunks(
+      ["seg-000.m4a", "seg-001.m4a", "ignore.bin", "seg-002.m4a"],
+      "/tmp/audio",
+      300,
+      720,
+    );
+    expect(chunks).toEqual([
+      { path: "/tmp/audio/seg-000.m4a", offsetSec: 0, durationSec: 300 },
+      { path: "/tmp/audio/seg-001.m4a", offsetSec: 300, durationSec: 300 },
+      { path: "/tmp/audio/seg-002.m4a", offsetSec: 600, durationSec: 120 },
+    ]);
+  });
+});
 
 describe("mergeChunkPayloads", () => {
   it("offsets word timings and rebuilds speaker turns across chunks", () => {

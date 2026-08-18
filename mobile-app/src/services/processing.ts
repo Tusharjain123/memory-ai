@@ -7,8 +7,12 @@ import { listPeople } from "../db/insights";
 import { getUserProfile } from "../db/profile";
 import {
   computePollDeadlineMs,
+  QUEUED_PROGRESS,
   SINGLE_UPLOAD_MAX_BYTES,
   UPLOAD_PART_BYTES,
+  UPLOAD_PROGRESS_MAX,
+  UPLOAD_PROGRESS_START,
+  uploadPartProgress,
 } from "../utils/processingTimeouts";
 import {
   getPendingRecording,
@@ -24,6 +28,21 @@ export type ProcessRecordingOptions = {
 };
 
 export { computePollDeadlineMs } from "../utils/processingTimeouts";
+
+export function shouldPollExistingJob(pending: {
+  processingJobId: string | null;
+  lastError: string | null;
+}): boolean {
+  return Boolean(pending.processingJobId && !pending.lastError);
+}
+
+/** Upload sessions are deleted after a failed transcription job. */
+export function shouldReuseUploadSession(pending: {
+  processingJobId: string | null;
+  lastError: string | null;
+}): boolean {
+  return !(pending.lastError && pending.processingJobId);
+}
 
 export async function estimateDurationSec(uri: string): Promise<number | undefined> {
   try {
@@ -91,12 +110,13 @@ export async function startProcessing(
   uri: string,
   options: ProcessRecordingOptions = {},
 ): Promise<{ jobId: string; uploadId: string | null }> {
+  options.onProgress?.(UPLOAD_PROGRESS_START);
   const keyterms = await collectKeyterms();
   const totalBytes = await getFileSize(uri);
   const durationMs = options.durationMs ?? Math.round((totalBytes / 16_000) * 1000);
 
   if (totalBytes <= SINGLE_UPLOAD_MAX_BYTES) {
-    const jobId = await uploadSingle(uri, keyterms, durationMs);
+    const jobId = await uploadSingle(uri, keyterms, durationMs, options.onProgress);
     if (options.pendingId) {
       await updatePendingUploadState(options.pendingId, {
         processingJobId: jobId,
@@ -131,17 +151,23 @@ export async function processRecording(
   options: ProcessRecordingOptions = {},
 ): Promise<ProcessedConversation> {
   const pending = options.pendingId ? await getPendingRecording(options.pendingId) : null;
-  if (pending?.processingJobId) {
-    const durationSec = (options.durationMs ?? pending.durationMs ?? undefined)
-      ? (options.durationMs ?? pending.durationMs)! / 1000
-      : await estimateDurationSec(uri);
-    return poll(pending.processingJobId, durationSec, options.onProgress);
+  const durationSec = (options.durationMs ?? pending?.durationMs ?? undefined)
+    ? (options.durationMs ?? pending!.durationMs)! / 1000
+    : await estimateDurationSec(uri);
+
+  if (pending && shouldPollExistingJob(pending)) {
+    return poll(pending.processingJobId!, durationSec, options.onProgress);
   }
 
-  const { jobId } = await startProcessing(uri, options);
-  const durationSec = options.durationMs
-    ? options.durationMs / 1000
-    : await estimateDurationSec(uri);
+  options.onProgress?.(UPLOAD_PROGRESS_START);
+  const reuseUpload = pending ? shouldReuseUploadSession(pending) : true;
+  const { jobId } = await startProcessing(
+    uri,
+    reuseUpload
+      ? options
+      : { ...options, resumeUploadId: null, startPartIndex: 0 },
+  );
+  options.onProgress?.(QUEUED_PROGRESS);
   return poll(jobId, durationSec, options.onProgress);
 }
 
@@ -149,7 +175,9 @@ async function uploadSingle(
   uri: string,
   keyterms: string[],
   durationMs: number,
+  onProgress?: (progress: number) => void,
 ): Promise<string> {
+  onProgress?.(UPLOAD_PROGRESS_START);
   const form = new FormData();
   form.append("audio", {
     uri,
@@ -171,6 +199,7 @@ async function uploadSingle(
   }
   const queued = (await response.json()) as ProcessingJobState;
   if (queued.status !== "queued") throw new Error("The processing job was not queued");
+  onProgress?.(UPLOAD_PROGRESS_MAX);
   return queued.jobId;
 }
 
@@ -213,7 +242,9 @@ async function uploadMultipart(
     }
   }
 
+  options.onProgress?.(uploadPartProgress(startPart, partCount));
   for (let partIndex = startPart; partIndex < partCount; partIndex += 1) {
+    options.onProgress?.(uploadPartProgress(partIndex, partCount));
     const offset = partIndex * partSize;
     const length = Math.min(partSize, totalBytes - offset);
     const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -252,8 +283,9 @@ async function uploadMultipart(
         uploadPartIndex: partIndex + 1,
       });
     }
-    options.onProgress?.(Math.round(((partIndex + 1) / partCount) * 8));
+    options.onProgress?.(uploadPartProgress(partIndex + 1, partCount));
   }
+  options.onProgress?.(UPLOAD_PROGRESS_MAX);
 
   const completeResponse = await withRetries(() => fetch(
     `${API_URL}/v1/conversations/process/upload/complete`,
@@ -286,8 +318,11 @@ async function poll(
     });
     if (!response.ok) throw new Error(`Could not check processing (${response.status})`);
     const state = (await response.json()) as ProcessingJobState;
+    if (state.status === "queued") {
+      onProgress?.(QUEUED_PROGRESS);
+    }
     if (state.status === "processing" && typeof state.progress === "number") {
-      onProgress?.(state.progress);
+      onProgress?.(Math.max(QUEUED_PROGRESS, state.progress));
     }
     if (state.status === "complete") return state.result;
     if (state.status === "failed") throw new Error(state.error);

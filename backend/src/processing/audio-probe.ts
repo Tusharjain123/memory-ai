@@ -143,17 +143,17 @@ export function computePollDeadlineMs(durationSec?: number): number {
 
 export function chunkThresholdSec(): number {
   const parsed = Number(process.env.DEEPGRAM_CHUNK_THRESHOLD_SEC);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 600;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
 }
 
 export function chunkSizeSec(): number {
   const parsed = Number(process.env.DEEPGRAM_CHUNK_SEC);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 600;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
 }
 
 export function chunkConcurrency(): number {
   const parsed = Number(process.env.DEEPGRAM_CHUNK_CONCURRENCY);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 4) : 2;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 4) : 1;
 }
 
 export function shouldChunkAudio(durationSec: number): boolean {

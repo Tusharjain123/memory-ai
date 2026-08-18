@@ -52,6 +52,7 @@ export type AssembledUpload = {
   directory: string;
   mimetype: string;
   keyterms: string[];
+  durationMs: number | null;
 };
 
 const SESSION_TTL_MS = 24 * 60 * 60_000;
@@ -180,6 +181,7 @@ export class UploadSessionService implements OnModuleInit {
       directory,
       mimetype: manifest.mimetype,
       keyterms: manifest.keyterms,
+      durationMs: manifest.durationMs,
     };
   }
 

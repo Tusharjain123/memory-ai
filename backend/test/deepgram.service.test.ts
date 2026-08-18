@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DeepgramService,
   buildListenUrl,
+  isRetryableDeepgramError,
   mapDeepgramPayload,
   pickBetterTranscript,
   resolveDeepgramConfig,
@@ -196,6 +197,48 @@ describe("DeepgramService", () => {
     }
   });
 
+  it("retries Deepgram 408 SLOW_UPLOAD then succeeds", async () => {
+    process.env.DEEPGRAM_API_KEY = "test-key";
+    const directory = await mkdtemp(join(tmpdir(), "memory-ai-test-"));
+    const audioPath = join(directory, "sample.m4a");
+    await writeFile(audioPath, "fake audio");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({
+          err_code: "SLOW_UPLOAD",
+          err_msg: "Request upload timeout.",
+          request_id: "req-1",
+        }),
+        { status: 408, headers: { "Content-Type": "application/json" } },
+      ))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        metadata: { duration: 2.5 },
+        results: {
+          channels: [{ alternatives: [{ transcript: "Aaj deploy karenge after the retry." }] }],
+          utterances: [{
+            speaker: 0,
+            start: 0,
+            end: 2.5,
+            transcript: "Aaj deploy karenge after the retry.",
+          }],
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await new DeepgramService().transcribe(audioPath, "audio/mp4");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.rawTranscript).toContain("deploy");
+      expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+        expect.objectContaining({
+          headers: expect.objectContaining({ "Content-Length": expect.any(String) }),
+        }),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("applies env model and language and maps detected languages", async () => {
     process.env.DEEPGRAM_API_KEY = "test-key";
     process.env.DEEPGRAM_MODEL = "nova-3";
@@ -229,6 +272,15 @@ describe("DeepgramService", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("isRetryableDeepgramError", () => {
+  it("retries upload timeouts and gateway failures", () => {
+    expect(isRetryableDeepgramError(408, '{"err_code":"SLOW_UPLOAD"}')).toBe(true);
+    expect(isRetryableDeepgramError(429)).toBe(true);
+    expect(isRetryableDeepgramError(503)).toBe(true);
+    expect(isRetryableDeepgramError(400, "Cannot set both diarize and diarize_model")).toBe(false);
   });
 });
 

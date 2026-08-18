@@ -109,7 +109,15 @@ export async function setPendingRecordingError(
   id: string,
   error: string,
 ): Promise<void> {
-  await updatePendingUploadState(id, { lastError: error });
+  const current = await getPendingRecording(id);
+  if (!current) return;
+  await updatePendingUploadState(id, {
+    lastError: error,
+    processingJobId: null,
+    ...(current.processingJobId
+      ? { uploadId: null, uploadPartIndex: null }
+      : {}),
+  });
 }
 
 export async function deletePendingRecording(id: string): Promise<void> {

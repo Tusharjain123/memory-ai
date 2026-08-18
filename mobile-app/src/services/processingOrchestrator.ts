@@ -69,7 +69,11 @@ export function isProcessingPending(pendingId: string): boolean {
 }
 
 async function runPending(item: PendingRecording): Promise<string> {
-  patch(item.id, { status: "running", progress: item.processingJobId ? 10 : 0, error: null });
+  patch(item.id, {
+    status: "running",
+    progress: item.processingJobId && !item.lastError ? 15 : 1,
+    error: null,
+  });
   try {
     const result = await processRecording(item.recordingUri, {
       pendingId: item.id,

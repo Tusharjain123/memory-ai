@@ -132,6 +132,7 @@ export class ProcessingController {
       ...stored,
       mimetype,
       keyterms: parseKeyterms(keytermsRaw),
+      ...(durationMs != null ? { durationMs } : {}),
     });
     return { status: "queued", jobId };
   }
@@ -228,6 +229,7 @@ export class ProcessingController {
         directory: assembled.directory,
         mimetype: assembled.mimetype,
         keyterms: assembled.keyterms,
+        ...(assembled.durationMs != null ? { durationMs: assembled.durationMs } : {}),
       });
       return { status: "queued", jobId };
     } catch (error) {

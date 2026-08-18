@@ -18,6 +18,7 @@ import {
   type ProcessingJobSnapshot,
 } from "../src/services/processingOrchestrator";
 import { relativeDate } from "../src/utils/format";
+import { processingStageLabel } from "../src/utils/processingTimeouts";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 export default function PendingRecordingsScreen() {
@@ -114,9 +115,9 @@ export default function PendingRecordingsScreen() {
           const isProcessing = isProcessingPending(item.id) || snapshot?.status === "running";
           const progress = snapshot?.progress;
           const statusLabel = isProcessing && progress != null
-            ? ` · ${progress}%`
+            ? ` · ${progress}% · ${processingStageLabel(progress)}`
             : isProcessing
-              ? " · Transcribing"
+              ? " · Uploading"
               : item.processingJobId
                 ? " · Queued"
                 : item.uploadId

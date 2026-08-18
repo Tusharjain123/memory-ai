@@ -46,8 +46,8 @@ describe("timeout scaling", () => {
 });
 
 describe("shouldChunkAudio", () => {
-  it("chunks when audio exceeds 10 minutes by default", () => {
-    expect(shouldChunkAudio(599)).toBe(false);
-    expect(shouldChunkAudio(601)).toBe(true);
+  it("chunks when audio exceeds 5 minutes by default", () => {
+    expect(shouldChunkAudio(299)).toBe(false);
+    expect(shouldChunkAudio(301)).toBe(true);
   });
 });

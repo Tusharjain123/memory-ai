@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { computePollDeadlineMs, MAX_RECORDING_MS } from "./processingTimeouts";
+import {
+  computePollDeadlineMs,
+  MAX_RECORDING_MS,
+  processingStageLabel,
+  QUEUED_PROGRESS,
+  UPLOAD_PROGRESS_START,
+  uploadPartProgress,
+} from "./processingTimeouts";
 
 describe("computePollDeadlineMs", () => {
   it("defaults to 30 minutes when duration is unknown", () => {
@@ -16,5 +23,15 @@ describe("computePollDeadlineMs", () => {
 describe("MAX_RECORDING_MS", () => {
   it("caps recordings at 3 hours", () => {
     expect(MAX_RECORDING_MS).toBe(3 * 60 * 60_000);
+  });
+});
+
+describe("upload progress", () => {
+  it("starts at 1% before the first part and reaches 15% when upload completes", () => {
+    expect(uploadPartProgress(0, 4)).toBe(UPLOAD_PROGRESS_START);
+    expect(uploadPartProgress(4, 4)).toBe(15);
+    expect(processingStageLabel(1)).toBe("Uploading");
+    expect(processingStageLabel(QUEUED_PROGRESS)).toBe("Preparing");
+    expect(processingStageLabel(40)).toBe("Transcribing");
   });
 });

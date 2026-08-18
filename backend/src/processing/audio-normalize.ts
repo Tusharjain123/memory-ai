@@ -29,6 +29,11 @@ export function shouldSkipMonoReencode(
   return channels === 1 && !needsBoost;
 }
 
+/** App capture is already mono speech; skip a full-file decode on long recordings. */
+export function shouldSkipVolumeDetect(channels: number | null): boolean {
+  return channels === 1;
+}
+
 /**
  * If the clip is quiet (table/far-field) or stereo, boost and/or force mono for ASR.
  * Skips re-encode when capture is already mono and loud enough.
@@ -43,6 +48,9 @@ export async function maybeNormalizeQuietAudio(
   const ffmpegTimeoutMs = computeFfmpegTimeoutMs(probe.durationSec);
 
   if (!(await ffmpegAvailable())) {
+    return { path: audioPath, mimetype, boosted: false, probe };
+  }
+  if (shouldSkipVolumeDetect(probe.channels)) {
     return { path: audioPath, mimetype, boosted: false, probe };
   }
 
