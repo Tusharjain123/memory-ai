@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MIGRATION_5, MIGRATION_6, MIGRATION_7, MIGRATION_8, SCHEMA_VERSION } from "./schema";
+import { MIGRATION_5, MIGRATION_6, MIGRATION_7, MIGRATION_8, MIGRATION_9, SCHEMA_VERSION } from "./schema";
 
 describe("people profile migration", () => {
   it("adds editable profile fields and stable speaker mappings", () => {
-    expect(SCHEMA_VERSION).toBe(8);
+    expect(SCHEMA_VERSION).toBe(9);
     expect(MIGRATION_5).toContain("ADD COLUMN relationship");
     expect(MIGRATION_5).toContain("ADD COLUMN email");
     expect(MIGRATION_5).toContain("ADD COLUMN phone");
@@ -41,5 +41,13 @@ describe("onboarding profile migration", () => {
   it("stores the user's role and intended use locally", () => {
     expect(MIGRATION_8).toContain("ADD COLUMN occupation");
     expect(MIGRATION_8).toContain("ADD COLUMN onboarding_goal");
+  });
+});
+
+describe("ask chat migration", () => {
+  it("stores persisted ask turns for global and per-memory chat", () => {
+    expect(MIGRATION_9).toContain("CREATE TABLE IF NOT EXISTS ask_turns");
+    expect(MIGRATION_9).toContain("conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE");
+    expect(MIGRATION_9).toContain("idx_ask_turns_global");
   });
 });

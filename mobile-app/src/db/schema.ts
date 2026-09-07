@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "memory-ai.db";
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const MIGRATION_1 = `
 PRAGMA journal_mode = WAL;
@@ -275,4 +275,24 @@ ALTER TABLE pending_recordings ADD COLUMN duration_ms INTEGER;
 export const MIGRATION_8 = `
 ALTER TABLE user_profile ADD COLUMN occupation TEXT;
 ALTER TABLE user_profile ADD COLUMN onboarding_goal TEXT;
+`;
+
+export const MIGRATION_9 = `
+CREATE TABLE IF NOT EXISTS ask_turns (
+  id TEXT PRIMARY KEY NOT NULL,
+  conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+  question TEXT NOT NULL,
+  answer TEXT,
+  citations_json TEXT NOT NULL DEFAULT '[]',
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_turns_conversation
+  ON ask_turns(conversation_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ask_turns_global
+  ON ask_turns(created_at)
+  WHERE conversation_id IS NULL;
 `;

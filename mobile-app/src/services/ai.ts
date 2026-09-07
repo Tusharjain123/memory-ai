@@ -1,4 +1,5 @@
 import type {
+  AskHistoryMessage,
   AskResponse,
   EmbeddingVectorResponse,
 } from "../contracts";
@@ -11,6 +12,21 @@ import {
   type SearchMemory,
 } from "../db/insights";
 import { answerLocalAnalytics } from "../search/localAnalytics";
+import { buildAskHistory } from "./askHistory";
+
+export type AskTurn = {
+  id: string;
+  question: string;
+  answer: string | null;
+  citations: string[];
+  memories?: SearchMemory[];
+  error: string | null;
+  loading: boolean;
+};
+
+export function turnsToHistory(turns: AskTurn[]): AskHistoryMessage[] {
+  return buildAskHistory(turns);
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -72,9 +88,11 @@ export async function retrieveMemories(
 export function askWithContext(
   question: string,
   memories: SearchMemory[],
+  history: AskHistoryMessage[] = [],
 ): Promise<AskResponse> {
   return post<AskResponse>("/v1/ai/ask", {
     question,
+    history,
     context: memories.map((memory) => ({
       id: `${memory.conversationId}:${memory.id}`,
       text: `${memory.title}\n${memory.text}`,
@@ -85,7 +103,8 @@ export function askWithContext(
 export function askGlobalWithContext(
   question: string,
   memories: SearchMemory[],
+  history: AskHistoryMessage[] = [],
 ): Promise<AskResponse> {
   return Promise.resolve(answerLocalAnalytics(question, memories))
-    .then((local) => local ?? askWithContext(question, memories));
+    .then((local) => local ?? askWithContext(question, memories, history));
 }

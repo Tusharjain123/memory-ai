@@ -67,4 +67,33 @@ describe("AiService", () => {
       context: [],
     })).rejects.toThrow("invalid structured content");
   });
+
+  it("forwards prior chat history before the latest memories prompt", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      message: {
+        content: JSON.stringify({
+          answer: "They agreed to deploy Friday.",
+          citations: [],
+        }),
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new AiService().ask({
+      question: "When exactly?",
+      history: [
+        { role: "user", content: "What was promised?" },
+        { role: "assistant", content: "Deployment was promised." },
+      ],
+      context: [],
+    });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.messages).toHaveLength(4);
+    expect(body.messages[1]).toEqual({ role: "user", content: "What was promised?" });
+    expect(body.messages[2]).toEqual({ role: "assistant", content: "Deployment was promised." });
+    expect(body.messages[3]?.content).toContain("When exactly?");
+  });
 });

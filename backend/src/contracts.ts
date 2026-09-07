@@ -106,9 +106,15 @@ export type ProcessingJobState =
   | { status: "complete"; jobId: string; result: ProcessedConversation }
   | { status: "failed"; jobId: string; error: string };
 
+export type AskHistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type AskRequest = {
   question: string;
   context: Array<{ id: string; text: string }>;
+  history?: AskHistoryMessage[];
 };
 
 export type AskResponse = {

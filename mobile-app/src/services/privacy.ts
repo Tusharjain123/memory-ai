@@ -44,6 +44,7 @@ export async function deleteAllData(): Promise<void> {
     DELETE FROM people;
     DELETE FROM pending_recordings;
     DELETE FROM user_profile;
+    DELETE FROM ask_turns;
     DELETE FROM sqlite_sequence WHERE name='embeddings';
   `);
   await Promise.all(

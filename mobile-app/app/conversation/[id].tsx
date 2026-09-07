@@ -18,7 +18,18 @@ import {
   type ConversationDetail,
 } from "../../src/db/conversations";
 import { setCommitmentStatus } from "../../src/db/commitments";
-import { askWithContext, retrieveMemories } from "../../src/services/ai";
+import {
+  completeAskTurn,
+  createAskTurn,
+  failAskTurn,
+  listAskTurns,
+} from "../../src/db/askTurns";
+import {
+  askWithContext,
+  retrieveMemories,
+  turnsToHistory,
+  type AskTurn,
+} from "../../src/services/ai";
 import { exportConversation } from "../../src/services/privacy";
 import { EvidenceCard } from "../../src/components/EvidenceCard";
 import { RecordingPlayer } from "../../src/components/RecordingPlayer";
@@ -46,14 +57,16 @@ export default function ConversationScreen() {
   const [tab, setTab] = useState<DetailTab>("overview");
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("raw");
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [answerCitations, setAnswerCitations] = useState<string[]>([]);
+  const [askTurns, setAskTurns] = useState<AskTurn[]>([]);
   const [asking, setAsking] = useState(false);
   const [activeClipMs, setActiveClipMs] = useState<number | null>(null);
   const clip = useClipPlayer(item?.recordingUri);
 
   useFocusEffect(useCallback(() => {
-    if (id) void getConversation(id).then(setItem);
+    if (id) {
+      void getConversation(id).then(setItem);
+      void listAskTurns(id).then(setAskTurns);
+    }
   }, [id]));
 
   if (item === undefined) {
@@ -93,18 +106,60 @@ export default function ConversationScreen() {
     ]);
   }
 
-  async function ask(): Promise<void> {
-    if (!question.trim() || asking) return;
+  async function ask(value = question, existingTurnId?: string): Promise<void> {
+    const clean = value.trim();
+    if (!clean || asking || !item) return;
+    setQuestion("");
     setAsking(true);
-    setAnswer(null);
-    setAnswerCitations([]);
+
+    let turnId = existingTurnId;
+    if (!turnId) {
+      turnId = await createAskTurn({ conversationId: item.id, question: clean });
+      setAskTurns((current) => [
+        ...current,
+        {
+          id: turnId!,
+          question: clean,
+          answer: null,
+          citations: [],
+          error: null,
+          loading: true,
+        },
+      ]);
+    } else {
+      setAskTurns((current) => current.map((turn) => turn.id === turnId
+        ? { ...turn, question: clean, answer: null, citations: [], error: null, loading: true }
+        : turn));
+    }
+
     try {
-      const context = await retrieveMemories(question, item!.id);
-      const response = await askWithContext(question, context);
-      setAnswer(response.answer);
-      setAnswerCitations(response.citations);
+      const history = turnsToHistory(
+        askTurns.filter((turn) => turn.id !== turnId && turn.answer && !turn.error),
+      );
+      const context = await retrieveMemories(clean, item.id);
+      const response = await askWithContext(clean, context, history);
+      await completeAskTurn(turnId, {
+        answer: response.answer,
+        citations: response.citations,
+      });
+      setAskTurns((current) => current.map((turn) => turn.id === turnId
+        ? {
+            ...turn,
+            answer: response.answer,
+            citations: response.citations,
+            error: null,
+            loading: false,
+          }
+        : turn));
     } catch (cause) {
-      Alert.alert("Memory couldn’t answer", cause instanceof Error ? cause.message : "Try again in a moment.");
+      const message = cause instanceof Error ? cause.message : "Try again in a moment.";
+      await failAskTurn(turnId, message);
+      setAskTurns((current) => current.map((turn) => turn.id === turnId
+        ? { ...turn, error: message, loading: false }
+        : turn));
+      if (!existingTurnId) {
+        Alert.alert("Memory couldn’t answer", message);
+      }
     } finally {
       setAsking(false);
     }
@@ -149,9 +204,12 @@ export default function ConversationScreen() {
   const visibleDecisions = item.decisions.filter(
     (decision) => decision.approvalStatus !== "rejected",
   );
-  const citationSegments = item.segments.filter((segment) =>
-    answerCitations.some((citation) => citation.includes(segment.id) || citation.endsWith(segment.id)),
-  );
+
+  function citationSegmentsForTurn(citations: string[]) {
+    return item!.segments.filter((segment) =>
+      citations.some((citation) => citation.includes(segment.id) || citation.endsWith(segment.id)),
+    );
+  }
 
   return (
     <KeyboardScreen
@@ -394,15 +452,46 @@ export default function ConversationScreen() {
             <Text style={[styles.askHeading, { color: colors.ink }]}>Ask about this memory</Text>
             <Text style={[styles.askSubheading, { color: colors.muted }]}>Answers use only this conversation and link back to its transcript.</Text>
           </View>
-          {[
+          {askTurns.length === 0 ? [
             "What was promised?",
             "Who agreed to do what?",
             "What concerns were raised?",
           ].map((prompt) => (
-            <Pressable key={prompt} onPress={() => setQuestion(prompt)} style={[styles.prompt, { borderBottomColor: colors.line }]}>
+            <Pressable key={prompt} onPress={() => void ask(prompt)} style={[styles.prompt, { borderBottomColor: colors.line }]}>
               <Text style={[styles.promptText, { color: colors.ink }]}>{prompt}</Text>
               <Ionicons name="arrow-forward" size={17} color={colors.faint} />
             </Pressable>
+          )) : null}
+          {askTurns.map((turn) => (
+            <View key={turn.id} style={styles.askTurnBlock}>
+              <View style={[styles.askUserBubble, { backgroundColor: colors.surfaceMuted }]}>
+                <Text style={[styles.askUserText, { color: colors.ink }]}>{turn.question}</Text>
+              </View>
+              {turn.loading ? <InlineState icon="sparkles" title="Reading this memory…" loading /> : null}
+              {turn.error ? (
+                <Pressable onPress={() => void ask(turn.question, turn.id)}>
+                  <Text style={[styles.askErrorText, { color: colors.danger }]}>{turn.error} · Tap to retry</Text>
+                </Pressable>
+              ) : null}
+              {turn.answer ? (
+                <View style={[styles.answer, { backgroundColor: colors.sageSoft }]}>
+                  <Ionicons name="sparkles" size={19} color={colors.sage} />
+                  <Text selectable style={[styles.answerText, { color: colors.ink }]}>{turn.answer}</Text>
+                </View>
+              ) : null}
+              {citationSegmentsForTurn(turn.citations).map((segment) => (
+                <EvidenceCard
+                  key={`${turn.id}:${segment.id}`}
+                  quote={segment.cleanText || segment.rawText}
+                  speakerLabel={segment.speakerLabel}
+                  speakerName={segment.speakerName}
+                  startMs={segment.startMs}
+                  playing={clip.playing && clip.mode === "clip" && activeClipMs === segment.startMs}
+                  available={clip.available}
+                  onPlay={() => playEvidence(segment.startMs)}
+                />
+              ))}
+            </View>
           ))}
           <View style={[styles.composer, { backgroundColor: colors.surface }]}>
             <TextInput
@@ -425,25 +514,6 @@ export default function ConversationScreen() {
               <Ionicons name="arrow-up" size={19} color={question.trim() ? colors.background : colors.faint} />
             </Pressable>
           </View>
-          {asking ? <InlineState icon="sparkles" title="Reading this memory…" loading /> : null}
-          {answer ? (
-            <View style={[styles.answer, { backgroundColor: colors.sageSoft }]}>
-              <Ionicons name="sparkles" size={19} color={colors.sage} />
-              <Text selectable style={[styles.answerText, { color: colors.ink }]}>{answer}</Text>
-            </View>
-          ) : null}
-          {citationSegments.map((segment) => (
-            <EvidenceCard
-              key={segment.id}
-              quote={segment.cleanText || segment.rawText}
-              speakerLabel={segment.speakerLabel}
-              speakerName={segment.speakerName}
-              startMs={segment.startMs}
-              playing={clip.playing && clip.mode === "clip" && activeClipMs === segment.startMs}
-              available={clip.available}
-              onPlay={() => playEvidence(segment.startMs)}
-            />
-          ))}
         </View>
       ) : null}
 
@@ -540,6 +610,10 @@ const styles = StyleSheet.create({
   askIcon: { width: 56, height: 56, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   askHeading: { fontSize: typeScale.title2, fontWeight: "800", letterSpacing: -0.5, marginTop: spacing.md },
   askSubheading: { fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: spacing.xs },
+  askTurnBlock: { gap: spacing.sm, marginBottom: spacing.lg },
+  askUserBubble: { alignSelf: "flex-end", maxWidth: "88%", borderRadius: 18, borderBottomRightRadius: 6, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  askUserText: { fontSize: typeScale.body, lineHeight: 21 },
+  askErrorText: { fontSize: 13, lineHeight: 19 },
   prompt: { minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   promptText: { flex: 1, fontSize: 14, fontWeight: "600" },
   composer: { minHeight: 58, maxHeight: 120, borderRadius: 20, flexDirection: "row", alignItems: "flex-end", paddingLeft: spacing.md, paddingRight: 7, paddingVertical: 7, marginTop: spacing.xl },

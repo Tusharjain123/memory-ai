@@ -11,6 +11,12 @@ const askSchema = z.object({
   context: z.array(
     z.object({ id: z.string().max(200), text: z.string().max(20_000) }),
   ).max(30),
+  history: z.array(
+    z.object({
+      role: z.enum(["user", "assistant"]),
+      content: z.string().max(4_000),
+    }),
+  ).max(12).optional(),
 });
 const embedSchema = z.object({ text: z.string().trim().min(1).max(5_000) });
 
