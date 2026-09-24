@@ -1,0 +1,758 @@
+/* ═══════════════════════════════════════════════════════════════════
+   VISUALS + MOTION
+   Everything added in the interactive refresh lives here so it can be
+   reviewed — and removed — as one unit. Loaded after globals.css from
+   app/layout.tsx (an @import inside globals.css would land first, since
+   CSS requires @import to precede all other rules).
+
+   Two rules govern every animation below:
+
+   1. The reduced-motion block at the end of globals.css sets
+      `animation: none !important` on everything, which freezes an
+      element at its FIRST keyframe — not its last. So each once-only
+      effect declares its FINISHED state as normal CSS; `.will-reveal`
+      (added by the observer in landing.tsx, and never added under
+      reduced motion) rewinds it, and `.is-visible` plays it forward.
+      Reduced motion therefore shows the outcome, not a half-drawn card.
+
+   2. Anything decorative is aria-hidden in the markup. Nothing here is
+      the only carrier of meaning.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══ Honesty treatment ══════════════════════════════════════════════
+   The CSS illustrations in components/app-ui/ are NOT screenshots. They
+   get a dashed edge and a visible tag; real screenshots get the solid
+   .phone-frame below. The two must never look alike.               */
+/* No `position` here: .hero-memory is already absolutely positioned and a
+   blanket `position: relative` would override it. Each host establishes its
+   own containing block for .recreation-tag. */
+.recreation {
+  border: 1px dashed var(--tint-300) !important;
+}
+
+.recreation-tag {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  background: var(--surface);
+  padding: 3px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+}
+
+/* ═══ Real screenshots ═══════════════════════════════════════════════ */
+.phone-frame {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.phone-frame-screen {
+  display: block;
+  width: 100%;
+  border: 6px solid var(--surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.phone-frame img {
+  width: 100%;
+  border-radius: calc(var(--radius-xl) - 8px);
+}
+
+.phone-frame figcaption {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ═══ Audio meter (hero) ═════════════════════════════════════════════
+   Each bar carries its own height from the envelope array, so the
+   resting state already reads as recorded speech. Every bar also has a
+   slightly different duration, so they drift permanently out of phase
+   and never march in step.                                          */
+.wave-meter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 62px;
+}
+
+.wave-meter span {
+  width: 3px;
+  height: var(--h);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, var(--accent), var(--accent-pressed));
+  opacity: 0.5;
+  animation: wave-bar calc(980ms + var(--i) * 43ms) var(--ease) infinite
+    alternate;
+  animation-delay: calc(var(--i) * -117ms);
+  will-change: transform;
+}
+
+@keyframes wave-bar {
+  from {
+    transform: scaleY(0.32);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* In the trust strip, standing in for the Mic icon on "Capture naturally".
+   It sits in flat, uncomposited space here, so it paints reliably — and it
+   is not competing with the waveforms already drawn into the hero
+   illustration. */
+.footer-wave {
+  height: 22px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.footer-wave span {
+  width: 2px;
+  height: calc(var(--h) * 0.36);
+  min-height: 3px;
+  opacity: 0.85;
+}
+
+/* ═══ Ask answer (hero) ══════════════════════════════════════════════
+   .hero-memory already supplies the white card, so this sits inside it
+   transparently — one card, not two. The dashed recreation edge moves
+   up to .hero-memory instead (see .hero-memory.recreation below).    */
+.ask-answer {
+  font-size: 0.875rem;
+  border: 0 !important;
+  background: none;
+  min-width: 0;
+}
+
+.hero-memory.recreation {
+  border: 1px dashed var(--tint-300) !important;
+}
+
+.ask-question {
+  display: inline-block;
+  background: var(--mint);
+  border-radius: 14px 14px 4px 14px;
+  padding: 8px 13px;
+  margin-bottom: var(--space-sm) !important;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.ask-reply {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+/* Without this the flex child refuses to shrink and the answer runs out
+   past the card edge. */
+.ask-reply > div {
+  min-width: 0;
+}
+
+.ask-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--sage-soft);
+  color: var(--accent-ink);
+}
+
+.ask-reply strong {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--accent-ink);
+  margin-bottom: 2px;
+}
+
+.ask-text {
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.ask-clause {
+  display: inline;
+}
+
+.ask-source {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: var(--space-sm) !important;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--line);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.ask-source span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ═══ Review card ════════════════════════════════════════════════════
+   Resting CSS is the finished state: approved, dimmed alternatives,
+   "Saved to memory" showing.                                        */
+.review-card {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-card);
+  max-width: 420px;
+}
+
+.review-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  margin-bottom: var(--space-sm) !important;
+}
+
+.review-kicker span {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  background: var(--surface-muted, var(--mint));
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+}
+
+.review-title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+  margin-bottom: var(--space-md) !important;
+}
+
+.review-evidence {
+  margin: 0 0 var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--mint);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 0.8125rem;
+  font-style: italic;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.review-meta {
+  display: block;
+  font-style: normal;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 5px;
+}
+
+.review-actions {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.review-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 7px 13px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  /* finished state: the paths not taken have receded */
+  opacity: 0.4;
+}
+
+.review-approve {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.review-approve svg {
+  width: 15px;
+  height: 15px;
+}
+
+.review-approve path {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+}
+
+.review-saved {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-md) !important;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--accent-ink);
+}
+
+/* Rewind, then play.
+
+   The observer only ADDS .is-visible — it never removes .will-reveal. So the
+   .is-visible rules have to restate the finished values, not just supply the
+   transition, or the card stays rewound forever. Both selectors have the same
+   specificity, so source order decides and .is-visible must come second. */
+.review-card.will-reveal .review-approve {
+  background: transparent;
+}
+
+.review-card.will-reveal .review-approve path {
+  stroke-dashoffset: 100;
+}
+
+.review-card.will-reveal .review-pill:not(.review-approve) {
+  opacity: 1;
+}
+
+.review-card.will-reveal .review-saved {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.review-card.is-visible .review-approve {
+  background: var(--accent-soft);
+  transition: background 320ms var(--ease) 300ms;
+}
+
+.review-card.is-visible .review-approve path {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 340ms var(--ease) 420ms;
+}
+
+.review-card.is-visible .review-pill:not(.review-approve) {
+  opacity: 0.4;
+  transition: opacity 400ms var(--ease) 780ms;
+}
+
+.review-card.is-visible .review-saved {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 360ms var(--ease) 950ms,
+    transform 360ms var(--ease) 950ms;
+}
+
+/* ═══ "The problem" band ═════════════════════════════════════════════ */
+.problem {
+  background: var(--surface);
+  border-block: 1px solid var(--line);
+}
+
+.problem-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: start;
+}
+
+.problem-art img {
+  width: 100%;
+  border-radius: var(--radius-xl);
+}
+
+.problem-copy h2 {
+  margin-bottom: var(--space-lg) !important;
+}
+
+.problem-copy > p {
+  color: var(--muted);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  max-width: 44ch;
+}
+
+.problem-list {
+  list-style: none;
+  margin: var(--space-xxl) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-md);
+}
+
+.problem-list li {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.problem-list svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  color: var(--accent-ink);
+}
+
+.problem-resolve {
+  margin-top: calc(var(--space-xxl) * -1);
+  padding-left: var(--space-xxl);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+  position: relative;
+  z-index: 1;
+}
+
+.problem-resolve > p {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+/* ═══ Feature cards: four now, so the wells must agree ═══════════════ */
+.feature-screenshot {
+  min-height: 0;
+  padding-block: var(--space-xxl);
+  overflow: hidden;
+}
+
+/* The sources are full 560x1218 phone captures. `top` would crop straight
+   through the status bar — and 04-commitments has a black bezel band there —
+   so the window starts just below it: with this box the visible slice is ~32%
+   of the image height, and 12% pushes its top edge to ~8%. */
+.feature-screenshot img {
+  aspect-ratio: 16 / 11;
+  object-fit: cover;
+  object-position: center 12%;
+  border-radius: var(--radius-lg);
+}
+
+/* ═══ Privacy: the packet travelling device → cloud → device ════════ */
+
+/* Wraps the rail and the existing arrow in one flex slot. Without a display
+   the span stays inline and the rail collapses to zero width. */
+.flow-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 1 90px;
+  min-width: 0;
+}
+
+.flow-rail {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--on-dark-line);
+}
+
+.flow-dot {
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--on-dark-accent);
+  box-shadow: 0 0 12px var(--on-dark-accent);
+  opacity: 0;
+  animation: packet 3.4s var(--ease) infinite;
+  animation-play-state: paused;
+}
+
+.privacy-top.is-visible .flow-dot {
+  animation-play-state: running;
+}
+
+.flow-step + .flow-step .flow-dot {
+  animation-delay: 1.5s;
+}
+
+@keyframes packet {
+  0% {
+    left: 0;
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  38% {
+    left: 100%;
+    opacity: 1;
+  }
+  46%,
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+/* ═══ Roadmap: concept art, kept visibly quieter than product shots ══ */
+.roadmap-grid article {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg) var(--space-lg) var(--space-xl);
+  overflow: hidden;
+}
+
+.roadmap-art {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--mint);
+  margin-bottom: var(--space-lg);
+}
+
+.roadmap-art img {
+  width: 100%;
+  display: block;
+  opacity: 0.9;
+  filter: saturate(0.85);
+  transition:
+    transform 0.45s var(--ease),
+    filter 0.45s var(--ease);
+}
+
+.roadmap-grid article:hover .roadmap-art img {
+  transform: scale(1.03);
+  filter: saturate(1);
+}
+
+.roadmap-art .planned-label {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--surface);
+}
+
+.roadmap-note {
+  font-size: 0.75rem !important;
+  color: var(--faint) !important;
+  margin-top: var(--space-xs);
+}
+
+/* ═══ Staggered reveals ══════════════════════════════════════════════
+   Opt in with data-reveal-stagger; landing.tsx sets --i on each child.
+   Capped at 6 so a long row never leaves the last item lagging.
+
+   The observer only ADDS .is-visible — it never removes .will-reveal — so the
+   .is-visible rule has to restate the finished values. Same specificity, so
+   source order decides and it must come second. Resting state is visible, so
+   reduced motion (where .will-reveal is never applied) shows everything. */
+[data-reveal-stagger] > * {
+  transition:
+    opacity 560ms var(--ease),
+    transform 560ms var(--ease);
+  transition-delay: calc(min(var(--i, 0), 6) * 70ms);
+}
+
+.will-reveal[data-reveal-stagger] > * {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.is-visible[data-reveal-stagger] > * {
+  opacity: 1;
+  transform: none;
+}
+
+/* ═══ Hover: one shared affordance for every card-like surface ═══════ */
+@media (hover: hover) and (pointer: fine) {
+  .feature-card,
+  .roadmap-grid article,
+  .control-grid > div,
+  .closing-mark {
+    transition:
+      transform 0.25s var(--ease),
+      box-shadow 0.25s var(--ease),
+      border-color 0.25s var(--ease);
+  }
+
+  .feature-card:hover,
+  .roadmap-grid article:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lift);
+    border-color: var(--accent-soft);
+  }
+
+  .control-grid > div:hover {
+    transform: translateY(-3px);
+  }
+
+  .closing-mark:hover {
+    transform: translateY(-3px) rotate(-4deg);
+  }
+
+  .feature-screenshot img {
+    transition: transform 0.45s var(--ease);
+  }
+
+  .feature-card:hover .feature-screenshot img {
+    transform: scale(1.03);
+  }
+
+  .phone-frame .phone-frame-screen {
+    transition:
+      transform 0.28s var(--ease),
+      box-shadow 0.28s var(--ease);
+  }
+
+  .phone-frame:hover .phone-frame-screen {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lift);
+  }
+
+  .site-footer a:not(.brand) {
+    transition: color 0.2s var(--ease);
+  }
+
+  .site-footer a:not(.brand):hover {
+    color: var(--accent-ink);
+  }
+}
+
+/* Keyboard users get the same affordance as the mouse. */
+.feature-card:focus-within,
+.roadmap-grid article:focus-within {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lift);
+}
+
+/* ═══ Walkthrough: a rail marking the active step ════════════════════ */
+.step-tab {
+  position: relative;
+}
+
+.step-tab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.35s var(--ease);
+}
+
+.step-tab.active::before {
+  transform: scaleY(1);
+}
+
+/* The stage keeps the single `image-in` keyframe already declared on
+   .stage-image in globals.css and adds nothing of its own. Layering a second,
+   transform-based animation on the child <img> promoted it to its own
+   compositor layer inside an already-animating parent, and this Chrome build
+   then never repainted it: opacity computed to 1, the animation reported
+   `finished`, and the image stayed visibly washed out. The same applied to a
+   per-chip stagger on .stage-tags. One animation, one element. */
+
+/* ═══ Hero: the phone leans a little toward the pointer ══════════════
+   Applied to a wrapper, never to .hero-phone itself — that element is
+   already running the phone-float keyframes from globals.css.       */
+.hero-phone-tilt {
+  height: 100%;
+  transform: translate3d(
+      calc(var(--tilt-x, 0) * 5px),
+      calc(var(--tilt-y, 0) * 5px),
+      0
+    )
+    rotate(calc(var(--tilt-x, 0) * 0.8deg));
+  transition: transform 420ms var(--ease);
+}
+
+.hero-memory-tilt {
+  transform: translate3d(
+    calc(var(--tilt-x, 0) * -4px),
+    calc(var(--tilt-y, 0) * -4px),
+    0
+  );
+  transition: transform 460ms var(--ease);
+}
+
+/* ═══ Responsive ═════════════════════════════════════════════════════ */
+@media (max-width: 1000px) {
+  .problem-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-xxxl);
+  }
+
+  .problem-art {
+    max-width: 520px;
+  }
+
+  /* The card overlaps the illustration's lower-left corner on desktop; when
+     the columns stack it just sits under it. */
+  .problem-resolve {
+    margin-top: var(--space-xl);
+    padding-left: 0;
+  }
+
+  .review-card {
+    max-width: 100%;
+  }
+
+  .hero-wave {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .flow-rail {
+    flex-basis: 28px;
+    min-width: 20px;
+  }
+
+  .feature-screenshot img {
+    aspect-ratio: 16 / 9;
+  }
+}
+
+/* ═══ Reduced motion ═════════════════════════════════════════════════
+   globals.css already kills every animation and transition. Two things
+   need more than that: a packet frozen at 0% would be a stray dot, and
+   the tilt vars would hold whatever the pointer last set.           */
+@media (prefers-reduced-motion: reduce) {
+  .flow-dot {
+    display: none;
+  }
+
+  .hero-phone-tilt,
+  .hero-memory-tilt {
+    transform: none !important;
+  }
+}
