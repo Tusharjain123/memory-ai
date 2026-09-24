@@ -1,5 +1,5 @@
 import vinext from "vinext";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
 
@@ -30,7 +30,8 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ mode }) => {
+  const loaded = loadEnv(mode, process.cwd(), "");
   process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= "false";
   process.env.WRANGLER_SEND_METRICS ??= "false";
   process.env.WRANGLER_WRITE_LOGS ??= "false";
@@ -47,7 +48,18 @@ export default defineConfig(async () => {
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         inspectorPort: false,
-        config: localBindingConfig,
+        config: {
+          ...localBindingConfig,
+          vars: {
+            SUPABASE_URL:
+              loaded.SUPABASE_URL || process.env.SUPABASE_URL || "",
+            SUPABASE_SECRET_KEY:
+              loaded.SUPABASE_SECRET_KEY ||
+              process.env.SUPABASE_SECRET_KEY ||
+              "",
+            DECK_URL: loaded.DECK_URL || process.env.DECK_URL || "",
+          },
+        },
       }),
     ],
   };

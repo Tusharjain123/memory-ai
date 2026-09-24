@@ -7,16 +7,29 @@ type SiteEnvironment = {
   SUPABASE_SECRET_KEY?: string;
   DECK_URL?: string;
 };
-export function serverSettings() {
+
+function readBinding(name: keyof SiteEnvironment): string | undefined {
   const bindings = env as unknown as SiteEnvironment;
+  const fromWorker = bindings[name];
+  if (typeof fromWorker === "string" && fromWorker.trim()) return fromWorker;
+  try {
+    const fromProcess = process.env[name];
+    if (typeof fromProcess === "string" && fromProcess.trim()) return fromProcess;
+  } catch {
+    /* Worker isolate may not expose process.env. */
+  }
+  return undefined;
+}
+
+export function serverSettings() {
   return {
-    supabaseUrl: bindings.SUPABASE_URL,
-    supabaseSecretKey: bindings.SUPABASE_SECRET_KEY,
+    supabaseUrl: readBinding("SUPABASE_URL"),
+    supabaseSecretKey: readBinding("SUPABASE_SECRET_KEY"),
   };
 }
+
 export function publicSiteSettings() {
-  const bindings = env as unknown as SiteEnvironment;
-  const value = bindings.DECK_URL?.trim();
+  const value = readBinding("DECK_URL")?.trim();
   let deckUrl = DEFAULT_DECK;
   if (
     value?.startsWith("/") &&

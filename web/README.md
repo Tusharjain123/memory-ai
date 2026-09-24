@@ -17,11 +17,11 @@ Open the localhost URL printed by the server (normally `http://localhost:5173`).
 ## Connect Supabase
 
 1. In your Supabase project's SQL Editor, run `supabase/waitlist.sql`. This creates a separate `public.waitlist_signups` table with a unique normalized email, UUID and timestamp. Row-level security is enabled, with no anonymous/authenticated read or write policies.
-2. Copy `.env.example` to **`.dev.vars`** inside `web/`. The local Cloudflare-backed server loads this file; a plain `.env` file is not sufficient for its runtime bindings.
+2. Copy `.env.example` to **`.env`** inside `web/`. The same names work as DigitalOcean runtime variables. Do not use a `NEXT_PUBLIC_`/`VITE_` prefix.
 3. Set `SUPABASE_URL` to your project's HTTPS URL and `SUPABASE_SECRET_KEY` to a server secret key (`sb_secret_…`). Get these from your Supabase project settings. Follow [Supabase's API key guidance](https://supabase.com/docs/guides/getting-started/api-keys).
 4. Restart `npm run dev`. The email form becomes available when both settings are present. Submit a test address you control, then confirm one row appears in the Supabase Table Editor. Re-submit the same address with different capitalization to verify it still has one row.
 
-The secret stays in server runtime bindings and must never use a `NEXT_PUBLIC_`/`VITE_` prefix or be committed. `.dev.vars` is ignored by Git. For any future hosting environment, add the two values as server secrets there. A URL alone cannot enable storage.
+The secret stays on the server and must never use a `NEXT_PUBLIC_`/`VITE_` prefix or be committed. `.env` is ignored by Git. For hosting, add the same two names as runtime secrets. A URL alone cannot enable storage.
 
 Use Supabase's Table Editor to view or export signups. Outreach is manual. The website does not send email, create visitor accounts, or expose a list of addresses.
 
@@ -33,7 +33,7 @@ The form also offers a feature-detected `join_early_access` WebMCP tool using th
 
 ## Replace the deck link
 
-All deck links use **one setting: `DECK_URL`** in `.dev.vars`. Set it to your public HTTPS PDF URL, then restart the server. If left blank, it uses `/deck/Memory_AI_Product_Overview.pdf`, a copy of the completed refresh deck. You can also replace that bundled file while keeping its name. Root-relative paths or HTTPS URLs are supported.
+All deck links use **one setting: `DECK_URL`** in `.env` or the host environment. Set it to your public HTTPS PDF URL, then restart the server. If left blank, it uses `/deck/Memory_AI_Product_Overview.pdf`, a copy of the completed refresh deck. You can also replace that bundled file while keeping its name. Root-relative paths or HTTPS URLs are supported.
 
 ## Edit the website
 
