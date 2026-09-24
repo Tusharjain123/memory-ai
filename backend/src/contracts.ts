@@ -114,7 +114,7 @@ export type AskHistoryMessage = {
 export type AskRequest = {
   question: string;
   context: Array<{ id: string; text: string }>;
-  history?: AskHistoryMessage[];
+  history?: AskHistoryMessage[] | undefined;
 };
 
 export type AskResponse = {
