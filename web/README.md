@@ -65,4 +65,4 @@ npm run build
 
 `npm test` uses controlled storage responses; it never connects to Supabase. It covers normalization, duplicate success, malformed/oversized input, spam traps, absent configuration, provider failures and retry. Real database persistence can only be checked after credentials are supplied.
 
-`npm run start` serves the production build locally through Wrangler. This command is not a deployment. The development preview remains the simplest way to review changes.
+`npm run start` serves the production build through Wrangler on `0.0.0.0` and `PORT` (defaults to 8080). Run `npm run build` first. DigitalOcean health checks expect that port.
