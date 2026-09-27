@@ -57,8 +57,27 @@ describe("AiService", () => {
     expect(body.messages[1]?.content).toContain("Memories JSON:");
   });
 
-  it("rejects malformed structured answers", async () => {
+  it("accepts an answer wrapped in a markdown fence", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      message: {
+        content: `\`\`\`json\n${JSON.stringify({
+          answer: "Rahul owns deployment.",
+          citations: ["conversation-1:segment-1"],
+        })}\n\`\`\``,
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    await expect(new AiService().ask({
+      question: "Who owns deployment?",
+      context: [{ id: "conversation-1:segment-1", text: "Rahul owns deployment." }],
+    })).resolves.toEqual({
+      answer: "Rahul owns deployment.",
+      citations: ["conversation-1:segment-1"],
+    });
+  });
+
+  it("rejects malformed structured answers", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => new Response(JSON.stringify({
       message: { content: JSON.stringify({ answer: 42, citations: "not-an-array" }) },
     }), { status: 200, headers: { "Content-Type": "application/json" } })));
 

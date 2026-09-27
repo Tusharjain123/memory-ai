@@ -120,20 +120,103 @@ describe("OllamaService", () => {
     expect(user).toContain("Detected languages: hi");
   });
 
-  it("rejects malformed model output instead of persisting it", async () => {
+  it("accepts understanding wrapped in a markdown fence or prose", async () => {
+    const fenced = `Here is the memory:\n\`\`\`json\n${JSON.stringify(understanding)}\n\`\`\`\nDone.`;
+    const service = new OllamaService();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ message: { content: JSON.stringify({ title: "Incomplete" }) } }), {
+      new Response(JSON.stringify({ message: { content: fenced } }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
     ));
+
+    await expect(service.understand({
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{ speaker: 0, startMs: 0, endMs: 2_000, text: "Aaj deploy karenge." }],
+    })).resolves.toEqual(understanding);
+  });
+
+  it("uses thinking text when the visible answer is not JSON", async () => {
+    const service = new OllamaService();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        message: {
+          content: "I extracted the meeting memory.",
+          thinking: JSON.stringify(understanding),
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    await expect(service.understand({
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{ speaker: 0, startMs: 0, endMs: 2_000, text: "Aaj deploy karenge." }],
+    })).resolves.toEqual(understanding);
+  });
+
+  it("rejects malformed model output instead of persisting it", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => new Response(JSON.stringify({ message: { content: JSON.stringify({ title: "Incomplete" }) } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
     const service = new OllamaService();
     await expect(service.understand({
       rawTranscript: "test",
       language: "en",
       durationMs: 100,
       utterances: [],
-    })).rejects.toThrow();
+    })).rejects.toThrow("Understanding returned invalid structured content");
+  });
+
+  it("retries once when the first understanding reply is not usable", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: { content: "not json" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: { content: JSON.stringify(understanding) } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new OllamaService().understand({
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{ speaker: 0, startMs: 0, endMs: 2_000, text: "Aaj deploy karenge." }],
+    })).resolves.toEqual(understanding);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a temporary upstream status and keeps a permanent 410", async () => {
+    const service = new OllamaService();
+    const transcript = {
+      rawTranscript: "Aaj deploy karenge.",
+      language: "hi",
+      durationMs: 2_000,
+      utterances: [{ speaker: 0, startMs: 0, endMs: 2_000, text: "Aaj deploy karenge." }],
+    };
+    const recovered = vi.fn()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: { content: JSON.stringify(understanding) } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", recovered);
+    await expect(service.understand(transcript)).resolves.toEqual(understanding);
+    expect(recovered).toHaveBeenCalledTimes(2);
+
+    const gone = vi.fn().mockResolvedValue(new Response("gone", { status: 410 }));
+    vi.stubGlobal("fetch", gone);
+    await expect(service.understand(transcript)).rejects.toThrow("Understanding failed (410)");
+    expect(gone).toHaveBeenCalledTimes(1);
   });
 
   it("normalizes commitments with evidence from authoritative segments", async () => {

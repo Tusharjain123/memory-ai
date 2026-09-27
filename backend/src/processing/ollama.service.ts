@@ -18,6 +18,7 @@ import {
   ollamaFetch,
   ollamaStructuredFormat,
 } from "../ollama/ollama-client.js";
+import { isRetryableChatStatus, parseStructuredChatJson, readChatMessage } from "../ollama/parse-model-json.js";
 import { createOpenAiEmbeddings } from "../embeddings/openai-embeddings.js";
 import { computeOllamaChatTimeoutMs } from "./audio-probe.js";
 import {
@@ -37,6 +38,7 @@ import {
 } from "./evidence-attach.js";
 
 const OLLAMA_NETWORK_RETRY_ATTEMPTS = 3;
+const STRUCTURED_OUTPUT_ATTEMPTS = 2;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -107,18 +109,31 @@ export class OllamaService {
         },
       ],
     };
-    const response = await this.chatWithRetry(body, timeoutMs, transcript.rawTranscript.length);
-    if (!response.ok) {
-      throw new ServiceUnavailableException(`Understanding failed (${response.status})`);
+    let lastError = "Understanding returned invalid structured content";
+    for (let attempt = 0; attempt < STRUCTURED_OUTPUT_ATTEMPTS; attempt += 1) {
+      const response = await this.chatWithRetry(body, timeoutMs, transcript.rawTranscript.length);
+      if (!response.ok) {
+        throw new ServiceUnavailableException(`Understanding failed (${response.status})`);
+      }
+      const message = await readChatMessage(response);
+      if (!message) {
+        lastError = "Understanding returned invalid structured content";
+      } else if (!message.content?.trim() && !message.thinking?.trim()) {
+        lastError = "Understanding returned no content";
+      } else {
+        try {
+          return parseStructuredChatJson(message, understandingSchema);
+        } catch (error) {
+          if (error instanceof ServiceUnavailableException) throw error;
+          lastError = "Understanding returned invalid structured content";
+        }
+      }
+      if (attempt < STRUCTURED_OUTPUT_ATTEMPTS - 1) {
+        this.logger.warn(`Understanding output retry ${attempt + 1}/${STRUCTURED_OUTPUT_ATTEMPTS - 1}: ${lastError}`);
+        continue;
+      }
     }
-    const payload = (await response.json()) as {
-      message?: { content?: string };
-    };
-    const content = payload.message?.content;
-    if (!content) {
-      throw new ServiceUnavailableException("Understanding returned no content");
-    }
-    return understandingSchema.parse(JSON.parse(content));
+    throw new ServiceUnavailableException(lastError);
   }
 
   private async chatWithRetry(
@@ -129,7 +144,16 @@ export class OllamaService {
     let lastError: unknown;
     for (let attempt = 0; attempt < OLLAMA_NETWORK_RETRY_ATTEMPTS; attempt += 1) {
       try {
-        return await ollamaFetch("chat", "/api/chat", body, timeoutMs);
+        const response = await ollamaFetch("chat", "/api/chat", body, timeoutMs);
+        if (response.ok || !isRetryableChatStatus(response.status) || attempt === OLLAMA_NETWORK_RETRY_ATTEMPTS - 1) {
+          return response;
+        }
+        await response.text().catch(() => undefined);
+        this.logger.warn(
+          `Understanding HTTP retry ${attempt + 1}/${OLLAMA_NETWORK_RETRY_ATTEMPTS - 1}: status ${response.status}`,
+        );
+        await sleep(500 * 2 ** attempt);
+        continue;
       } catch (error) {
         lastError = error;
         if (isDeadlineError(error)) {
