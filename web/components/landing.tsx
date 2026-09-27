@@ -5,32 +5,25 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowUpRight,
   ArrowRight,
-  Mic,
   Sparkles,
   ShieldCheck,
-  Check,
   MessageCircle,
-  Users,
-  ClipboardCheck,
   Cloud,
   Smartphone,
   LockKeyhole,
   FileDown,
   Trash2,
-  CalendarDays,
-  Video,
-  FolderTree,
   Menu,
+  Play,
   X,
   CheckCheck,
   CalendarClock,
-  LifeBuoy,
 } from "lucide-react";
 import { WaitlistForm } from "./waitlist-form";
-import { WaveMeter } from "./app-ui/wave-meter";
 import { AskAnswer } from "./app-ui/ask-answer";
-import { ReviewCard } from "./app-ui/review-card";
 import { PhoneFrame } from "./app-ui/phone-frame";
+import { LiveCapture } from "./app-ui/live-capture";
+import { FadingNotes } from "./app-ui/fading-notes";
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 function subscribeToMotionPreference(onChange: () => void) {
@@ -41,106 +34,118 @@ function subscribeToMotionPreference(onChange: () => void) {
 const getReducedMotion = () => window.matchMedia(reducedMotionQuery).matches;
 const getServerReducedMotion = () => true;
 
-const steps = [
+const demoSteps = [
   {
-    name: "Record",
-    icon: Mic,
-    title: "Be there. We’ll take notes.",
-    description:
-      "Record a conversation on your phone. Pause when you need to, or save the audio to process later.",
-    image: "record",
-    alt: "Actual Memory AI recording screen with a microphone, timer and start recording control.",
-    caption: "Speaker-separated transcripts, summaries, topics and decisions.",
-    tags: ["Original", "Cleaned", "Roman Hinglish"],
+    when: "During",
+    text: "Put your phone on the table and record. No bot, no typing.",
   },
   {
-    name: "Review",
-    icon: ClipboardCheck,
-    title: "A memory you can make right.",
-    description:
-      "Check what AI picked up. Approve, correct or reject extracted details, and replay the source when audio is retained.",
-    image: "review",
-    alt: "Actual Memory AI review card with approve, correct and reject controls for an extracted commitment. Fictional demo data.",
-    caption: "You decide what becomes part of your memory.",
-    tags: ["Approve", "Correct", "Reject"],
+    when: "After",
+    text: "Confirm the promises and decisions AI picked up. They join your commitments.",
   },
   {
-    name: "Recall",
-    icon: MessageCircle,
-    title: "Just ask what you remember.",
-    description:
-      "Ask about one conversation or across saved memories. Follow supporting references back to the source.",
-    image: "ask",
-    alt: "Actual Memory AI question and answer about a promised proposal. Fictional demo data.",
-    caption:
-      "Supporting references are implemented but not shown in this demo crop.",
-    tags: ["One conversation", "Across memories", "Source references"],
+    when: "Later",
+    text: "Ask what was agreed and get the answer from your own conversations.",
+  },
+  {
+    when: "Before the next meeting",
+    text: "Open a short brief: the last conversation and what’s still open.",
   },
 ];
 
-const features = [
+const oneToOne = [
   {
-    className: "people-card",
-    icon: Users,
-    title: "Pick up where you left off.",
-    body: "People profiles, conversation history, and preparation briefs help you arrive with the context.",
-    image: "screen-people",
-    alt: "Actual People screen listing relationship memory across conversations. Fictional demo data.",
-    foot: "People & history",
+    pain: "No bot can join a coffee.",
+    fix: "Your phone on the table is enough.",
   },
   {
-    className: "commitment-card",
+    pain: "Typing notes across the table feels rude.",
+    fix: "Stay present. Review the key points afterwards.",
+  },
+  {
+    pain: "There are no shared minutes, only two memories.",
+    fix: "Commitments on both sides, with the exact words.",
+  },
+];
+
+const fixes = [
+  {
+    className: "fix-commitments",
     icon: CheckCheck,
-    title: "A promise with a place to live.",
-    body: "Keep track of what you owe and what others owe you, with the conversation behind each commitment.",
+    pain: "I promised something and forgot.",
+    title: "Every commitment, with the moment you made it.",
+    body: "What you owe and what others owe you, each linked to the conversation where it was said.",
     image: "screen-commitments",
     alt: "Actual commitments screen listing what is owed, with source evidence. Fictional demo data.",
-    foot: "Commitments & follow-through",
+    foot: "Commitments",
   },
   {
-    className: "prep-card",
+    className: "fix-ask",
+    icon: MessageCircle,
+    pain: "We remember the decision differently.",
+    title: "Ask what was agreed. Follow it to the source.",
+    body: "Ask about one conversation or across saved memories, and follow supporting references back to what was said.",
+    image: "ask",
+    alt: "Actual Memory AI question and answer about a promised proposal. Fictional demo data.",
+    foot: "Ask your memory",
+  },
+  {
+    className: "fix-prep",
     icon: CalendarClock,
-    title: "A brief before you meet.",
-    body: "Gather the last conversation, open commitments and the details that matter into one short preparation view.",
+    pain: "I walk into calls without context.",
+    title: "A short brief before you meet.",
+    body: "The last conversation, open commitments and the details that matter, gathered into one preparation view.",
     image: "screen-person-prep",
     alt: "Actual preparation brief for an upcoming conversation with Aarav Mehta. Fictional demo data.",
     foot: "Preparation",
   },
+];
+
+const faqs = [
   {
-    className: "pending-card",
-    icon: LifeBuoy,
-    title: "Nothing gets lost on the way.",
-    body: "If processing is interrupted, the recording waits safely on your device until it can finish.",
-    image: "screen-pending",
-    alt: "Actual saved recordings screen showing a recording waiting to finish processing. Fictional demo data.",
-    foot: "Recovery",
+    q: "Does a bot join my meeting?",
+    a: (
+      <>
+        No. Memory AI records from your phone, which makes it a fit for{" "}
+        <a href="#one-to-one">in-person, one-to-one conversations</a>. Online
+        meeting capture is planned, not available yet.
+      </>
+    ),
+  },
+  {
+    q: "Does it work when we mix Hindi and English?",
+    a: "Yes. Transcripts come in the original, a cleaned-up version and Roman Hinglish.",
+  },
+  {
+    q: "What if my connection drops while it’s processing?",
+    a: "The recording waits safely on your device and finishes processing when it can.",
+  },
+  {
+    q: "Where do my memories live?",
+    a: "On your phone. Audio goes to cloud services for transcription and AI, and is deleted from our servers as soon as processing finishes. The result waits briefly until your phone collects it. There’s no cloud backup or device sync yet, so clearing the app’s data removes your memories.",
+  },
+  {
+    q: "Is it on iPhone?",
+    a: "Not yet. Memory AI is an Android app right now.",
+  },
+  {
+    q: "Should I tell people I’m recording?",
+    a: "Yes. Always ask before you record a conversation.",
+  },
+  {
+    q: "Can I use it today?",
+    a: "It’s in early access on Android, and free for the whole beta. Join the list and we’ll email you personally when your spot opens.",
+  },
+  {
+    q: "What’s coming next?",
+    a: "Online calls, context from your calendar and folders by client are planned. These are plans, not promises. No dates yet.",
   },
 ];
 
-const roadmap = [
-  {
-    icon: CalendarDays,
-    image: "calendar",
-    title: "Calendar sync",
-    text: "The right context before you meet.",
-    detail:
-      "Connect events with relevant memories and make preparation easier.",
-  },
-  {
-    icon: Video,
-    image: "meeting",
-    title: "Online meeting notetaker",
-    text: "A memory for the meetings online, too.",
-    detail:
-      "Capture online conversations with transcripts, summaries, decisions and follow-ups.",
-  },
-  {
-    icon: FolderTree,
-    image: "folders",
-    title: "Folders & subfolders",
-    text: "A place for every part of your life.",
-    detail: "Organize memories by project, client or personal topic.",
-  },
+const nextSteps = [
+  "Join with your email. No account needed.",
+  "We email you personally when your spot opens.",
+  "Install the Android app. It’s free for the whole beta, and the first 15 members get a setup call with the founder.",
 ];
 
 export function Landing({
@@ -150,44 +155,29 @@ export function Landing({
   deckUrl: string;
   signupAvailable: boolean;
 }) {
-  const [step, setStep] = useState(0);
   const reducedMotion = useSyncExternalStore(
     subscribeToMotionPreference,
     getReducedMotion,
     getServerReducedMotion,
   );
   const [menuOpen, setMenuOpen] = useState(false);
-  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const demoVideo = useRef<HTMLVideoElement>(null);
   const heroVisual = useRef<HTMLDivElement>(null);
-  /* Once the reader picks a step themselves, nothing moves on its own again
-     for the rest of the session. That is the whole conflict-resolution story
-     between scroll-linking and the tablist. */
-  const manual = useRef(false);
-
-  /* Scroll drives the walkthrough: whichever tab sits nearest the middle of
-     the viewport is the active step. Observing the tab buttons themselves
-     means no extra markup and it works at every breakpoint, since they are a
-     column on desktop and a stack on mobile. Deps are stable, so the observer
-     is built once — not rebuilt on every step change. */
+  /* The demo starts itself, muted, the first time it scrolls into view —
+     never under reduced motion, and never again once it has started, so a
+     reader who pauses it stays in charge. */
   useEffect(() => {
-    if (reducedMotion || !("IntersectionObserver" in window)) return;
-    if (window.innerHeight < 620) return; // the centre band would never match
-    const nodes = tabs.current.filter(Boolean) as HTMLButtonElement[];
-    if (nodes.length !== steps.length) return;
+    const video = demoVideo.current;
+    if (reducedMotion || !video || !("IntersectionObserver" in window)) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (manual.current) return;
-        const hit = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (!hit) return;
-        const index = nodes.indexOf(hit.target as HTMLButtonElement);
-        if (index >= 0)
-          setStep((current) => (current === index ? current : index));
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        video.play().catch(() => {});
       },
-      { rootMargin: "-45% 0px -45% 0px", threshold: 0 },
+      { threshold: 0.5 },
     );
-    nodes.forEach((node) => observer.observe(node));
+    observer.observe(video);
     return () => observer.disconnect();
   }, [reducedMotion]);
 
@@ -263,11 +253,6 @@ export function Landing({
     };
   }, [reducedMotion]);
 
-  const activate = (index: number) => {
-    manual.current = true;
-    setStep(index);
-    tabs.current[index]?.focus();
-  };
   const returnToSignup = () => {
     setMenuOpen(false);
     window.setTimeout(
@@ -278,7 +263,6 @@ export function Landing({
       100,
     );
   };
-  const selected = steps[step];
   return (
     <>
       <a className="skip-link" href="#main">
@@ -298,10 +282,10 @@ export function Landing({
             </span>
           </a>
           <nav className="desktop-nav" aria-label="Main navigation">
-            <a href="#how-it-works">How it works</a>
-            <a href="#features">The app</a>
+            <a href="#the-problem">The problem</a>
+            <a href="#demo">How it works</a>
             <a href="#privacy">Privacy</a>
-            <a href="#whats-next">What’s next</a>
+            <a href="#faq">FAQ</a>
           </nav>
           <div className="nav-actions">
             <a
@@ -332,10 +316,10 @@ export function Landing({
             }}
           >
             {[
-              ["How it works", "#how-it-works"],
-              ["The app", "#features"],
+              ["The problem", "#the-problem"],
+              ["How it works", "#demo"],
               ["Privacy", "#privacy"],
-              ["What’s next", "#whats-next"],
+              ["FAQ", "#faq"],
             ].map(([label, url]) => (
               <a key={url} href={url} onClick={() => setMenuOpen(false)}>
                 {label}
@@ -349,38 +333,33 @@ export function Landing({
         <section className="hero shell" aria-labelledby="hero-title">
           <div className="hero-copy">
             <p className="eyebrow">
-              <span className="eyebrow-line" /> A little more present
+              <span className="eyebrow-line" /> For back-to-back client
+              conversations
             </p>
             <h1 id="hero-title">
-              Conversations
+              You said you’d
               <br />
-              worth <span>remembering.</span>
+              follow up.
+              <br />
+              <span>Did you?</span>
             </h1>
             <p className="hero-description">
-              Be in the moment. Memory AI turns your conversations into notes,
-              people, and promises you can come back to.
+              Memory AI remembers what was promised, decided and asked in your
+              client conversations, so you can listen instead of taking notes.
+              No meeting bot. Memories stay on your phone.
             </p>
             <WaitlistForm available={signupAvailable} />
-            <a
-              className="text-link"
-              href={deckUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Get to know Memory AI <span>View the deck</span>
-              <ArrowUpRight size={18} />
+            <p className="hero-perk">
+              The first 15 members get a setup call with the founder.
+            </p>
+            <a className="text-link" href="#demo">
+              See it in 20 seconds <span>Watch the demo</span>
+              <Play size={16} />
             </a>
           </div>
           <div className="hero-visual" ref={heroVisual}>
             <div className="hero-orbit" aria-hidden="true" />
-            <img
-              className="conversation-art"
-              src="/images/conversation.webp"
-              width="900"
-              height="600"
-              alt="Soft 3D illustration of two people connected by a conversation"
-              fetchPriority="high"
-            />
+            <LiveCapture />
             <div className="hero-phone">
               <div className="hero-phone-tilt">
                 <img
@@ -398,29 +377,25 @@ export function Landing({
               </div>
               <AskAnswer />
             </div>
-            <p className="visual-caption">
-              Phone: a real app screen. Card: an illustration. Fictional demo
-              data.
-            </p>
           </div>
         </section>
         <div className="hero-footer shell" data-reveal data-reveal-stagger>
           <p>
-            Less mental juggling.
+            Listen now.
             <br />
-            <strong>More room for the conversation.</strong>
+            <strong>Remember later.</strong>
           </p>
           <div>
-            <WaveMeter className="footer-wave" bars={14} />
-            <span>Capture naturally</span>
+            <CheckCheck />
+            <span>No more half-remembered promises</span>
           </div>
           <div>
-            <Sparkles />
-            <span>Find the important details</span>
+            <CalendarClock />
+            <span>No more scrolling for context before a call</span>
           </div>
           <div>
-            <ShieldCheck />
-            <span>Keep control</span>
+            <MessageCircle />
+            <span>No more “I thought we agreed…”</span>
           </div>
         </div>
 
@@ -431,213 +406,159 @@ export function Landing({
         >
           <div className="shell problem-layout" data-reveal>
             <div className="problem-art">
-              <img
-                src="/images/scattered-notes.webp"
-                width="900"
-                height="600"
-                loading="lazy"
-                alt="Conceptual illustration of notes and fragments scattered around a clock"
-              />
-              <div className="problem-resolve">
-                <ReviewCard />
-                <p>
-                  Memory AI extracts the detail and waits for you to confirm it.
-                </p>
-              </div>
+              <FadingNotes />
             </div>
             <div className="problem-copy">
               <p className="eyebrow">
-                <span className="eyebrow-line" /> Before Memory AI
+                <span className="eyebrow-line" /> Sound familiar?
               </p>
               <h2 id="problem-title">
-                The details don’t wait
+                It’s 6pm. Four client calls.
                 <br />
-                <span>for you to write them down.</span>
+                <span>Already blurring.</span>
               </h2>
               <p>
-                You were listening, not transcribing. By the evening the name,
-                the number and the thing you promised have already blurred.
+                You were listening, not transcribing. Now the budget number, the
+                deadline and the thing you promised are slipping away.
               </p>
-              <ul className="problem-list">
-                <li>
-                  <Check /> The commitment you made, half-remembered.
-                </li>
-                <li>
-                  <Check /> The decision everyone recalls differently.
-                </li>
-                <li>
-                  <Check /> The context you needed right before the next
-                  meeting.
-                </li>
-              </ul>
+              <p>
+                Notes mid-call cost you the conversation. Notes afterwards miss
+                the details.
+              </p>
+              <p>
+                One-to-ones are the hardest. The coffee with a client, the site
+                visit, the quick chat after the pitch: no bot, no shared
+                minutes, only two memories. That’s often where the real
+                commitments are made.
+              </p>
             </div>
+          </div>
+          <div id="one-to-one" className="shell one-to-one">
+            <ul className="contrast-list" data-reveal data-reveal-stagger>
+              {oneToOne.map((row) => (
+                <li key={row.pain}>
+                  <span className="contrast-pain">{row.pain}</span>
+                  <ArrowRight className="contrast-arrow" aria-hidden="true" />
+                  <strong className="contrast-fix">{row.fix}</strong>
+                </li>
+              ))}
+            </ul>
+            <p className="one-to-one-consent">
+              Always ask before you record.{" "}
+              <a href="#privacy">How your data is handled</a>
+            </p>
           </div>
         </section>
 
         <section
-          id="how-it-works"
-          className="walkthrough section"
-          aria-labelledby="walkthrough-title"
+          id="demo"
+          className="demo section"
+          aria-labelledby="demo-title"
         >
           <div className="shell">
             <div className="section-heading centered" data-reveal>
-              <p className="eyebrow">From a conversation to a memory</p>
-              <h2 id="walkthrough-title">
-                Say it. Save it.
+              <p className="eyebrow">How it works</p>
+              <h2 id="demo-title">
+                From a coffee chat
                 <br />
-                <span>Come back to it.</span>
+                <span>to a kept promise.</span>
               </h2>
-              <p>Three simple steps. One less thing to keep in your head.</p>
+              <p>Twenty seconds, real app screens.</p>
             </div>
-            <div className="walkthrough-layout" data-reveal>
-              <div
-                className="walkthrough-tabs"
-                role="tablist"
-                aria-label="Explore how Memory AI works"
-                aria-orientation="vertical"
-                onKeyDown={(event) => {
-                  let next = step;
-                  if (event.key === "ArrowDown" || event.key === "ArrowRight")
-                    next = (step + 1) % 3;
-                  else if (event.key === "ArrowUp" || event.key === "ArrowLeft")
-                    next = (step + 2) % 3;
-                  else if (event.key === "Home") next = 0;
-                  else if (event.key === "End") next = 2;
-                  else return;
-                  event.preventDefault();
-                  activate(next);
-                }}
-              >
-                {steps.map((item, index) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.name}
-                      ref={(node) => {
-                        tabs.current[index] = node;
-                      }}
-                      id={`step-tab-${index}`}
-                      role="tab"
-                      type="button"
-                      aria-selected={step === index}
-                      aria-controls={`step-panel-${index}`}
-                      tabIndex={step === index ? 0 : -1}
-                      className={`step-tab ${step === index ? "active" : ""}`}
-                      onClick={() => {
-                        manual.current = true;
-                        setStep(index);
-                      }}
-                    >
-                      <span className="step-number">0{index + 1}</span>
-                      <span className="step-content">
-                        <span className="step-name">
-                          <Icon size={21} />
-                          {item.name}
-                        </span>
-                        <span className="step-title">{item.title}</span>
-                        <span className="step-description">
-                          {item.description}
-                        </span>
-                      </span>
-                      <ArrowUpRight className="step-arrow" size={20} />
-                    </button>
-                  );
-                })}
-              </div>
-              <div
-                className={`walkthrough-stage stage-${selected.image}`}
-                role="tabpanel"
-                id={`step-panel-${step}`}
-                aria-labelledby={`step-tab-${step}`}
-                tabIndex={0}
-              >
-                <div className="stage-label">
-                  <span>Inside Memory AI</span>
-                  <span>Current MVP</span>
-                </div>
-                <div className="stage-intro">
-                  <h3>{selected.title}</h3>
-                  <p>{selected.description}</p>
-                </div>
-                <div className="stage-image" key={selected.image}>
-                  <img
-                    src={`/images/${selected.image}.webp`}
-                    alt={selected.alt}
-                    loading="lazy"
-                  />
-                </div>
-                <div className="stage-detail">
-                  <div className="stage-tags">
-                    {selected.tags.map((tag) => (
-                      <span key={tag}>{tag}</span>
-                    ))}
-                  </div>
-                  <p>{selected.caption}</p>
-                </div>
-              </div>
-            </div>
-            <p className="section-disclosure">
-              Authentic app screens with fictional demo data. Illustrations are
-              conceptual.
-            </p>
+            <figure className="demo-frame" data-reveal>
+              <video
+                ref={demoVideo}
+                src="/video/demo.mp4"
+                poster="/video/demo-poster.webp"
+                width="1280"
+                height="720"
+                controls
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                aria-describedby="demo-steps"
+              />
+            </figure>
+            <ol
+              id="demo-steps"
+              className="demo-steps"
+              data-reveal
+              data-reveal-stagger
+            >
+              {demoSteps.map((item) => (
+                <li key={item.when}>
+                  <strong>{item.when}</strong>
+                  <span>{item.text}</span>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
 
         <section
-          id="features"
-          className="features section shell"
-          aria-labelledby="features-title"
+          id="fixes"
+          className="fixes section shell"
+          aria-labelledby="fixes-title"
         >
           <div className="section-heading heading-row" data-reveal>
             <div>
-              <p className="eyebrow">Made for the details that matter</p>
-              <h2 id="features-title">
-                Remember the people.
+              <p className="eyebrow">What changes</p>
+              <h2 id="fixes-title">
+                Three things you’ll stop
                 <br />
-                <span>Keep the promises.</span>
+                <span>worrying about.</span>
               </h2>
             </div>
             <p>
-              The context of a conversation stays useful long after it ends.
+              What you say today is still there when a client asks tomorrow.
             </p>
           </div>
-          <div className="feature-grid" data-reveal data-reveal-stagger>
-            {features.map((feature) => {
-              const Icon = feature.icon;
+          <div className="fix-list">
+            {fixes.map((item) => {
+              const Icon = item.icon;
               return (
                 <article
-                  key={feature.title}
-                  className={`feature-card ${feature.className}`}
+                  key={item.title}
+                  className={`fix-row ${item.className}`}
+                  data-reveal
                 >
-                  <div className="feature-card-heading">
-                    <div className="feature-icon">
-                      <Icon size={26} />
+                  <div className="fix-pain">
+                    <span className="fix-pain-label">Sound like you?</span>
+                    <p>“{item.pain}”</p>
+                  </div>
+                  <div className="feature-card fix-card">
+                    <div className="feature-card-heading">
+                      <div className="feature-icon">
+                        <Icon size={26} />
+                      </div>
+                      <h3>{item.title}</h3>
+                      <p>{item.body}</p>
                     </div>
-                    <h3>{feature.title}</h3>
-                    <p>{feature.body}</p>
-                  </div>
-                  <div className="feature-screenshot">
-                    <img
-                      src={`/images/${feature.image}.webp`}
-                      width="560"
-                      height="1218"
-                      loading="lazy"
-                      alt={feature.alt}
-                    />
-                  </div>
-                  <div className="feature-foot">
-                    <span>{feature.foot}</span>
-                    <span>Current MVP</span>
+                    <div className="feature-screenshot">
+                      <img
+                        src={`/images/${item.image}.webp`}
+                        loading="lazy"
+                        alt={item.alt}
+                      />
+                    </div>
+                    <div className="feature-foot">
+                      <span>{item.foot}</span>
+                    </div>
                   </div>
                 </article>
               );
             })}
           </div>
-          <p className="mvp-note">
-            <Check size={18} aria-hidden="true" /> Current MVP means implemented
-            in the repository. It is not a claim of public availability or
-            production readiness.
-          </p>
+          <div className="cta-band" data-reveal>
+            <p>
+              <strong>Sound like you?</strong> Join early access, free for the
+              whole beta.
+            </p>
+            <a className="button" href="#early-access" onClick={returnToSignup}>
+              Join early access <ArrowUpRight size={19} />
+            </a>
+          </div>
         </section>
 
         <section
@@ -648,19 +569,24 @@ export function Landing({
           <div className="shell">
             <div className="privacy-top" data-reveal>
               <div className="privacy-copy">
-                <p className="eyebrow">Memory, with your say</p>
+                <p className="eyebrow">The obvious question</p>
                 <h2 id="privacy-title">
-                  Personal memories.
+                  Recording clients?
                   <br />
-                  <span>Personal control.</span>
+                  <span>On your terms.</span>
                 </h2>
                 <p>
-                  Permanent memories stay on your device. Transcription and AI
-                  use cloud processing, with a temporary processing handoff.
+                  No bot joins the conversation. Audio is deleted from our
+                  servers as soon as it’s processed, and your memories are
+                  stored only on your phone.
+                </p>
+                <p className="privacy-small">
+                  Transcription and AI run on cloud services while a recording
+                  is processed.
                 </p>
                 <div
                   className="storage-flow"
-                  aria-label="Audio recorded on device, cloud transcription and AI, permanent memories saved on device"
+                  aria-label="Audio recorded on device, processed in the cloud and then deleted, memories saved on device"
                 >
                   <div>
                     <Smartphone />
@@ -676,7 +602,7 @@ export function Landing({
                   <div>
                     <Cloud />
                     <strong>Process</strong>
-                    <span>In the cloud</span>
+                    <span>Then deleted</span>
                   </div>
                   <span className="flow-step" aria-hidden="true">
                     <span className="flow-rail">
@@ -737,55 +663,28 @@ export function Landing({
         </section>
 
         <section
-          id="whats-next"
-          className="roadmap section shell"
-          aria-labelledby="roadmap-title"
+          id="faq"
+          className="faq section shell"
+          aria-labelledby="faq-title"
         >
-          <div className="section-heading heading-row" data-reveal>
-            <div>
-              <p className="eyebrow">A little further ahead</p>
-              <h2 id="roadmap-title">
-                More ways
+          <div className="faq-layout">
+            <div className="section-heading" data-reveal>
+              <p className="eyebrow">Before you ask</p>
+              <h2 id="faq-title">
+                Fair
                 <br />
-                <span>to remember.</span>
+                <span>questions.</span>
               </h2>
             </div>
-            <p>
-              The same idea, in more of the places where conversations happen.
-            </p>
+            <div className="faq-list" data-reveal data-reveal-stagger>
+              {faqs.map((item) => (
+                <details key={item.q}>
+                  <summary>{item.q}</summary>
+                  <p>{item.a}</p>
+                </details>
+              ))}
+            </div>
           </div>
-          <div className="roadmap-grid" data-reveal data-reveal-stagger>
-            {roadmap.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.title}>
-                  <div className="roadmap-art">
-                    <img
-                      src={`/images/${item.image}.webp`}
-                      width="660"
-                      height="440"
-                      loading="lazy"
-                      alt={`Concept illustration for ${item.title.toLowerCase()}`}
-                    />
-                    <span className="planned-label">Planned</span>
-                  </div>
-                  <div className="roadmap-card-top">
-                    <div className="roadmap-icon">
-                      <Icon size={26} strokeWidth={1.5} />
-                    </div>
-                  </div>
-                  <h3>{item.title}</h3>
-                  <p className="roadmap-lead">{item.text}</p>
-                  <p>{item.detail}</p>
-                  <p className="roadmap-note">Concept illustration.</p>
-                </article>
-              );
-            })}
-          </div>
-          <p className="section-disclosure">
-            Proposed capabilities. No vendors, launch dates or delivery order
-            are promised.
-          </p>
         </section>
 
         <section className="closing-section" aria-labelledby="closing-title">
@@ -793,36 +692,36 @@ export function Landing({
             <div className="closing-mark">
               <img src="/images/logo.png" width="64" height="64" alt="" />
             </div>
-            <p className="eyebrow">Keep the conversation going</p>
+            <p className="eyebrow">Your next client conversation</p>
             <h2 id="closing-title">
-              Make room for
+              Stop relying on memory.
               <br />
-              <span>what matters.</span>
+              <span>Use one.</span>
             </h2>
             <p>
-              Leave your email. We’ll reach out when there’s a way to try Memory
-              AI.
+              Join early access on Android and be among the first to try Memory
+              AI with your clients.
             </p>
-            <div className="closing-actions">
-              <a
-                className="button"
-                href="#early-access"
-                onClick={returnToSignup}
-              >
-                Join early access <ArrowUpRight size={19} />
-              </a>
-              <a
-                className="button button-outline"
-                href={deckUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View the deck <ArrowUpRight size={19} />
-              </a>
+            <div className="closing-signup">
+              <WaitlistForm available={signupAvailable} instance="closing" />
+              <div className="next-steps">
+                <p className="next-steps-title">What happens next</p>
+                <ol>
+                  {nextSteps.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ol>
+              </div>
             </div>
-            {!signupAvailable && (
-              <p className="closing-note">Early-access signup opens soon.</p>
-            )}
+            <a
+              className="text-link closing-deck"
+              href={deckUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Want the details? <span>View the deck</span>
+              <ArrowUpRight size={18} />
+            </a>
           </div>
         </section>
       </main>
@@ -833,7 +732,11 @@ export function Landing({
             Memory<span className="brand-ai">ai</span>
           </span>
         </a>
-        <p>A memory for your conversations.</p>
+        <p>Remember every client conversation.</p>
+        <p className="footer-note">
+          App screens are real, shown with sample data. Cards marked
+          Illustration are drawn for this page.
+        </p>
         <a href={deckUrl} target="_blank" rel="noopener noreferrer">
           Product deck <ArrowUpRight size={16} />
         </a>

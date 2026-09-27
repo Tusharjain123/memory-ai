@@ -6,9 +6,9 @@ import "./globals.css";
 import "./visuals.css";
 
 export const metadata: Metadata = {
-  title: "Memory AI — Your conversations, remembered",
+  title: "Memory AI — Never forget what you promised a client",
   description:
-    "Record a conversation, review the important details, and find them when you need them. Discover Memory AI and join the early-access list.",
+    "Memory AI remembers what was promised, decided and asked in your one-to-one client conversations. No meeting bot, and memories stay on your phone. Join early access.",
   icons: { icon: "/favicon.png", shortcut: "/favicon.png" },
 };
 

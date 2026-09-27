@@ -109,23 +109,6 @@
   }
 }
 
-/* In the trust strip, standing in for the Mic icon on "Capture naturally".
-   It sits in flat, uncomposited space here, so it paints reliably — and it
-   is not competing with the waveforms already drawn into the hero
-   illustration. */
-.footer-wave {
-  height: 22px;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.footer-wave span {
-  width: 2px;
-  height: calc(var(--h) * 0.36);
-  min-height: 3px;
-  opacity: 0.85;
-}
-
 /* ═══ Ask answer (hero) ══════════════════════════════════════════════
    .hero-memory already supplies the white card, so this sits inside it
    transparently — one card, not two. The dashed recreation edge moves
@@ -209,163 +192,6 @@
   flex-shrink: 0;
 }
 
-/* ═══ Review card ════════════════════════════════════════════════════
-   Resting CSS is the finished state: approved, dimmed alternatives,
-   "Saved to memory" showing.                                        */
-.review-card {
-  position: relative;
-  background: var(--surface);
-  border-radius: var(--radius-xl);
-  padding: var(--space-xl);
-  box-shadow: var(--shadow-card);
-  max-width: 420px;
-}
-
-.review-kicker {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--accent-ink);
-  margin-bottom: var(--space-sm) !important;
-}
-
-.review-kicker span {
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--faint);
-  background: var(--surface-muted, var(--mint));
-  border-radius: var(--radius-pill);
-  padding: 2px 8px;
-}
-
-.review-title {
-  font-size: 1.0625rem;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--ink);
-  margin-bottom: var(--space-md) !important;
-}
-
-.review-evidence {
-  margin: 0 0 var(--space-lg);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--mint);
-  border-left: 2px solid var(--accent);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  font-size: 0.8125rem;
-  font-style: italic;
-  line-height: 1.55;
-  color: var(--muted);
-}
-
-.review-meta {
-  display: block;
-  font-style: normal;
-  font-size: 0.6875rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 5px;
-}
-
-.review-actions {
-  display: flex;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
-}
-
-.review-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  padding: 7px 13px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  /* finished state: the paths not taken have receded */
-  opacity: 0.4;
-}
-
-.review-approve {
-  border-color: transparent;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  font-weight: 600;
-  opacity: 1;
-}
-
-.review-approve svg {
-  width: 15px;
-  height: 15px;
-}
-
-.review-approve path {
-  stroke-dasharray: 100;
-  stroke-dashoffset: 0;
-}
-
-.review-saved {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: var(--space-md) !important;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--accent-ink);
-}
-
-/* Rewind, then play.
-
-   The observer only ADDS .is-visible — it never removes .will-reveal. So the
-   .is-visible rules have to restate the finished values, not just supply the
-   transition, or the card stays rewound forever. Both selectors have the same
-   specificity, so source order decides and .is-visible must come second. */
-.review-card.will-reveal .review-approve {
-  background: transparent;
-}
-
-.review-card.will-reveal .review-approve path {
-  stroke-dashoffset: 100;
-}
-
-.review-card.will-reveal .review-pill:not(.review-approve) {
-  opacity: 1;
-}
-
-.review-card.will-reveal .review-saved {
-  opacity: 0;
-  transform: translateY(6px);
-}
-
-.review-card.is-visible .review-approve {
-  background: var(--accent-soft);
-  transition: background 320ms var(--ease) 300ms;
-}
-
-.review-card.is-visible .review-approve path {
-  stroke-dashoffset: 0;
-  transition: stroke-dashoffset 340ms var(--ease) 420ms;
-}
-
-.review-card.is-visible .review-pill:not(.review-approve) {
-  opacity: 0.4;
-  transition: opacity 400ms var(--ease) 780ms;
-}
-
-.review-card.is-visible .review-saved {
-  opacity: 1;
-  transform: none;
-  transition:
-    opacity 360ms var(--ease) 950ms,
-    transform 360ms var(--ease) 950ms;
-}
-
 /* ═══ "The problem" band ═════════════════════════════════════════════ */
 .problem {
   background: var(--surface);
@@ -379,11 +205,6 @@
   align-items: start;
 }
 
-.problem-art img {
-  width: 100%;
-  border-radius: var(--radius-xl);
-}
-
 .problem-copy h2 {
   margin-bottom: var(--space-lg) !important;
 }
@@ -395,47 +216,7 @@
   max-width: 44ch;
 }
 
-.problem-list {
-  list-style: none;
-  margin: var(--space-xxl) 0 0;
-  padding: 0;
-  display: grid;
-  gap: var(--space-md);
-}
-
-.problem-list li {
-  display: flex;
-  gap: var(--space-sm);
-  align-items: flex-start;
-  color: var(--ink);
-  font-size: 1rem;
-}
-
-.problem-list svg {
-  flex-shrink: 0;
-  margin-top: 3px;
-  width: 18px;
-  height: 18px;
-  color: var(--accent-ink);
-}
-
-.problem-resolve {
-  margin-top: calc(var(--space-xxl) * -1);
-  padding-left: var(--space-xxl);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-md);
-  position: relative;
-  z-index: 1;
-}
-
-.problem-resolve > p {
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
-/* ═══ Feature cards: four now, so the wells must agree ═══════════════ */
+/* ═══ Feature screenshots: a cropped window onto each phone capture ═ */
 .feature-screenshot {
   min-height: 0;
   padding-block: var(--space-xxl);
@@ -517,52 +298,6 @@
   }
 }
 
-/* ═══ Roadmap: concept art, kept visibly quieter than product shots ══ */
-.roadmap-grid article {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-top: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  padding: var(--space-lg) var(--space-lg) var(--space-xl);
-  overflow: hidden;
-}
-
-.roadmap-art {
-  position: relative;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--mint);
-  margin-bottom: var(--space-lg);
-}
-
-.roadmap-art img {
-  width: 100%;
-  display: block;
-  opacity: 0.9;
-  filter: saturate(0.85);
-  transition:
-    transform 0.45s var(--ease),
-    filter 0.45s var(--ease);
-}
-
-.roadmap-grid article:hover .roadmap-art img {
-  transform: scale(1.03);
-  filter: saturate(1);
-}
-
-.roadmap-art .planned-label {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: var(--surface);
-}
-
-.roadmap-note {
-  font-size: 0.75rem !important;
-  color: var(--faint) !important;
-  margin-top: var(--space-xs);
-}
-
 /* ═══ Staggered reveals ══════════════════════════════════════════════
    Opt in with data-reveal-stagger; landing.tsx sets --i on each child.
    Capped at 6 so a long row never leaves the last item lagging.
@@ -591,7 +326,6 @@
 /* ═══ Hover: one shared affordance for every card-like surface ═══════ */
 @media (hover: hover) and (pointer: fine) {
   .feature-card,
-  .roadmap-grid article,
   .control-grid > div,
   .closing-mark {
     transition:
@@ -600,8 +334,7 @@
       border-color 0.25s var(--ease);
   }
 
-  .feature-card:hover,
-  .roadmap-grid article:hover {
+  .feature-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-lift);
     border-color: var(--accent-soft);
@@ -644,42 +377,10 @@
 }
 
 /* Keyboard users get the same affordance as the mouse. */
-.feature-card:focus-within,
-.roadmap-grid article:focus-within {
+.feature-card:focus-within {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lift);
 }
-
-/* ═══ Walkthrough: a rail marking the active step ════════════════════ */
-.step-tab {
-  position: relative;
-}
-
-.step-tab::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 14px;
-  bottom: 14px;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  transform: scaleY(0);
-  transform-origin: center;
-  transition: transform 0.35s var(--ease);
-}
-
-.step-tab.active::before {
-  transform: scaleY(1);
-}
-
-/* The stage keeps the single `image-in` keyframe already declared on
-   .stage-image in globals.css and adds nothing of its own. Layering a second,
-   transform-based animation on the child <img> promoted it to its own
-   compositor layer inside an already-animating parent, and this Chrome build
-   then never repainted it: opacity computed to 1, the animation reported
-   `finished`, and the image stayed visibly washed out. The same applied to a
-   per-chip stagger on .stage-tags. One animation, one element. */
 
 /* ═══ Hero: the phone leans a little toward the pointer ══════════════
    Applied to a wrapper, never to .hero-phone itself — that element is
@@ -714,21 +415,6 @@
   .problem-art {
     max-width: 520px;
   }
-
-  /* The card overlaps the illustration's lower-left corner on desktop; when
-     the columns stack it just sits under it. */
-  .problem-resolve {
-    margin-top: var(--space-xl);
-    padding-left: 0;
-  }
-
-  .review-card {
-    max-width: 100%;
-  }
-
-  .hero-wave {
-    display: none;
-  }
 }
 
 @media (max-width: 700px) {
@@ -754,5 +440,773 @@
   .hero-phone-tilt,
   .hero-memory-tilt {
     transform: none !important;
+  }
+}
+
+/* ═══ Hero strip: three pains, now equal columns ═════════════════════ */
+@media (min-width: 781px) {
+  .hero-footer {
+    grid-template-columns: 0.8fr 1fr 1fr 1fr;
+  }
+}
+
+.hero-footer > div svg {
+  flex-shrink: 0;
+}
+
+/* The problem copy carries two paragraphs now: the scenario, then the
+   workaround that fails. */
+.problem-copy > p + p {
+  margin-top: var(--space-md);
+}
+
+/* ═══ One-to-one: the contrast cards under "Sound familiar?" ═══════ */
+.one-to-one {
+  margin-top: 64px;
+}
+
+.one-to-one-consent {
+  margin-top: var(--space-xl);
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.one-to-one-consent a {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.contrast-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-xl);
+}
+
+.contrast-list li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-xxl) var(--space-xl);
+  background: var(--tint-25);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.contrast-pain {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  text-decoration: line-through;
+  text-decoration-color: var(--tint-400);
+}
+
+.contrast-arrow {
+  width: 18px;
+  height: 18px;
+  color: var(--accent-ink);
+  transform: rotate(90deg);
+}
+
+.contrast-fix {
+  color: var(--ink);
+  font-size: 1.125rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ═══ Pains → fixes: the pain on the left, the answer on the right ════ */
+.fixes .section-heading {
+  margin-bottom: 40px;
+}
+
+.fix-list {
+  display: grid;
+}
+
+.fix-row {
+  display: grid;
+  grid-template-columns: 0.9fr 1.3fr;
+  gap: 56px;
+  align-items: center;
+  padding-block: var(--space-xl);
+  border-top: 1px solid var(--line);
+}
+
+.fix-row:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.fix-pain-label {
+  display: inline-block;
+  margin-bottom: var(--space-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.fix-pain p {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: clamp(1.9rem, 3vw, 2.6rem);
+  line-height: 1.12;
+  color: var(--ink);
+}
+
+.fix-card .feature-card-heading {
+  max-width: none;
+}
+
+/* The ask capture is landscape; cropping it like the phone screens would
+   cut the answer off, so it is letterboxed on a soft tint instead. */
+.fix-ask .feature-screenshot img {
+  object-fit: contain;
+  object-position: center;
+  background: var(--tint-25);
+}
+
+/* ═══ FAQ ════════════════════════════════════════════════════════════ */
+.faq {
+  border-top: 1px solid var(--line);
+}
+
+.faq-layout {
+  display: grid;
+  grid-template-columns: 0.8fr 1.4fr;
+  gap: 72px;
+  align-items: start;
+}
+
+.faq-list details {
+  border-bottom: 1px solid var(--line);
+}
+
+.faq-list details:first-child {
+  border-top: 1px solid var(--line);
+}
+
+.faq-list summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-lg);
+  padding-block: var(--space-xl);
+  color: var(--ink);
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A plus that turns into a minus: two bars, the vertical one folds away. */
+.faq-list summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  background:
+    linear-gradient(var(--accent-ink), var(--accent-ink)) center / 100% 2px
+      no-repeat,
+    linear-gradient(var(--accent-ink), var(--accent-ink)) center / 2px 100%
+      no-repeat;
+  transition: background-size 0.25s var(--ease);
+}
+
+.faq-list details[open] summary::after {
+  background-size:
+    100% 2px,
+    2px 0;
+}
+
+.faq-list summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.faq-list details p {
+  padding-bottom: var(--space-xl);
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.faq-list details a {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 1000px) {
+  .fix-row,
+  .faq-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-xxxl);
+  }
+
+  .fix-row {
+    gap: var(--space-xl);
+  }
+
+  .contrast-list {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
+
+  .faq-layout .section-heading {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .one-to-one {
+    margin-top: var(--space-xxxl);
+  }
+
+  .faq-list summary {
+    font-size: 1rem;
+  }
+}
+
+/* Desktop: each fix card sits sideways — words left, screen right — so a
+   row stays about one screen tall instead of three. */
+@media (min-width: 1001px) {
+  .fix-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--space-xxl);
+    align-items: center;
+    padding: var(--space-xxl) var(--space-xxl) var(--space-lg);
+  }
+
+  .fix-card .feature-screenshot {
+    padding-block: 0 var(--space-lg);
+  }
+
+  .fix-card .feature-screenshot img {
+    aspect-ratio: 4 / 3;
+  }
+
+  .fix-card .feature-foot {
+    grid-column: 1 / -1;
+  }
+
+  .fix-card h3 {
+    font-size: 1.45rem;
+  }
+}
+
+/* ═══ Demo video ═════════════════════════════════════════════════════ */
+.demo {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+
+.demo-frame {
+  margin: 0 auto;
+  max-width: 1040px;
+  padding: var(--space-sm);
+  background: var(--mint);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lift);
+}
+
+.demo-frame video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  background: var(--mint);
+}
+
+.demo-steps {
+  list-style: none;
+  margin: 48px auto 0;
+  padding: 0;
+  max-width: 1040px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-xl);
+}
+
+.demo-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-top: var(--space-md);
+  border-top: 2px solid var(--accent-soft);
+}
+
+.demo-steps strong {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+}
+
+.demo-steps span {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+/* ═══ Privacy: a lead paragraph plus one small line ══════════════════ */
+.privacy-copy > p:not(.eyebrow) {
+  margin-top: 28px;
+  font-size: 1.125rem;
+  line-height: 1.7;
+  color: var(--on-dark-muted);
+  max-width: 535px;
+}
+
+.privacy-copy > p.privacy-small {
+  margin-top: var(--space-sm);
+  font-size: 0.875rem;
+}
+
+/* ═══ Footer: the one disclosure line, on a row of its own ═══════════ */
+.site-footer {
+  flex-wrap: wrap;
+  padding-block: var(--space-xl);
+}
+
+.site-footer .footer-note {
+  flex-basis: 100%;
+  order: 4;
+  font-size: 0.75rem;
+  color: var(--faint);
+}
+
+@media (max-width: 1000px) {
+  .demo-steps {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .demo-frame {
+    padding: var(--space-xs);
+    border-radius: var(--radius-lg);
+  }
+
+  .demo-frame video {
+    border-radius: var(--radius-md);
+  }
+
+  .demo-steps {
+    grid-template-columns: 1fr;
+    margin-top: var(--space-xxl);
+  }
+}
+
+/* ═══ Hero: a recording in progress (components/app-ui/live-capture) ══
+   Takes the place the 3D illustration used to hold, top-left behind the
+   phone. Never rotated: see the note in live-capture.tsx.            */
+.live-capture {
+  position: absolute;
+  left: -4%;
+  top: 7%;
+  width: 54%;
+  z-index: 1;
+  padding: 16px 18px 16px;
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lift);
+}
+
+.live-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 92px; /* room for the Illustration tag */
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.live-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger-ink);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.live-time {
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-wave.wave-meter {
+  height: 34px;
+  margin-block: 6px 4px;
+}
+
+.live-wave span {
+  height: calc(var(--h) * 0.5);
+  min-height: 3px;
+}
+
+.live-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.live-lines li {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.live-lines b {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.live-lines mark {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 1px 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.live-caught {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+/* Rewind, then play — .is-visible must come second (same specificity). */
+.live-capture.will-reveal .live-lines li,
+.live-capture.will-reveal .live-caught {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.live-capture.will-reveal .live-lines mark {
+  background: transparent;
+}
+
+.live-capture.is-visible .live-lines li {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 420ms var(--ease) calc(500ms + var(--i) * 750ms),
+    transform 420ms var(--ease) calc(500ms + var(--i) * 750ms);
+}
+
+.live-capture.is-visible .live-lines mark {
+  background: var(--accent-soft);
+  transition: background-color 500ms var(--ease) 2.5s;
+}
+
+.live-capture.is-visible .live-caught {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 360ms var(--ease) 2.9s,
+    transform 360ms var(--ease) 2.9s;
+}
+
+/* ═══ Problem: notes already slipping (components/app-ui/fading-notes) ═ */
+.problem-art {
+  display: flex;
+  justify-content: center;
+  padding: 56px 40px;
+  background: var(--tint-100);
+  border-radius: var(--radius-xl);
+}
+
+.fading-notes {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  padding: 26px 28px 24px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+  /* ruled paper, drawn with the existing line token */
+  background:
+    repeating-linear-gradient(
+        to bottom,
+        transparent 0 39px,
+        var(--line) 39px 40px
+      )
+      0 70px / 100% calc(100% - 70px) no-repeat,
+    var(--surface);
+}
+
+.notes-head {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--ink);
+  padding-right: 90px;
+  margin-bottom: 22px;
+}
+
+.notes-head span {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  color: var(--faint);
+}
+
+.notes-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notes-lines li {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.3rem;
+  color: var(--ink);
+}
+
+.notes-label {
+  color: var(--muted);
+  margin-right: 6px;
+}
+
+.notes-tail {
+  color: var(--faint);
+}
+
+/* Resting state is the point of the picture: the details have blurred. */
+.notes-detail {
+  filter: blur(3.5px);
+  opacity: 0.55;
+}
+
+.notes-foot {
+  margin-top: 14px;
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--danger-ink);
+}
+
+.fading-notes.will-reveal .notes-detail {
+  filter: none;
+  opacity: 1;
+}
+
+.fading-notes.is-visible .notes-detail {
+  filter: blur(3.5px);
+  opacity: 0.55;
+  transition:
+    filter 1.2s var(--ease) calc(900ms + var(--i) * 450ms),
+    opacity 1.2s var(--ease) calc(900ms + var(--i) * 450ms);
+}
+
+/* ═══ Call to action ═════════════════════════════════════════════════ */
+.hero-perk {
+  margin-top: 6px;
+  font-size: 0.8125rem;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.cta-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xl);
+  margin-top: 48px;
+  padding: 24px 28px;
+  background: var(--tint-100);
+  border: 1px solid var(--tint-300);
+  border-radius: var(--radius-xl);
+}
+
+.cta-band p {
+  font-size: 1.125rem;
+  color: var(--ink);
+}
+
+.cta-band strong {
+  font-weight: 700;
+}
+
+.cta-band .button {
+  flex-shrink: 0;
+}
+
+.closing-signup {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 40px;
+  margin-top: 36px;
+  padding: 32px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.closing-signup .hero-signup {
+  margin-top: 0;
+  max-width: none;
+}
+
+.next-steps-title {
+  margin-bottom: 14px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+}
+
+.next-steps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  counter-reset: next-step;
+}
+
+.next-steps li {
+  position: relative;
+  padding-left: 36px;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--muted);
+  counter-increment: next-step;
+}
+
+.next-steps li::before {
+  content: counter(next-step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.closing-deck {
+  justify-content: center;
+}
+
+@media (max-width: 1100px) {
+  .live-capture {
+    left: 0;
+    width: 52%;
+  }
+}
+
+@media (max-width: 1000px) {
+  .problem-art {
+    max-width: none;
+    padding: 40px 24px;
+  }
+}
+
+@media (max-width: 780px) {
+  .closing-signup {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 24px;
+  }
+
+  .cta-band {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 460px) {
+  .live-capture {
+    top: 0;
+    width: 60%;
+    padding: 12px 12px 12px;
+    border-radius: 16px;
+  }
+
+  .fading-notes {
+    padding: 22px 18px 20px;
+  }
+
+  .notes-lines li {
+    font-size: 1.1rem;
+  }
+}
+
+/* Narrow heroes: the phone and the answer card fill most of the space, so
+   the recording card keeps only the moment that matters. */
+@media (max-width: 780px) {
+  /* above the phone (z 2), still under the answer card that follows it */
+  .live-capture {
+    z-index: 3;
+  }
+
+  .live-lines li:not(.live-promise),
+  .live-wave.wave-meter {
+    display: none;
+  }
+
+  .live-head {
+    padding-right: 0;
+    padding-top: 18px;
+    font-size: 0.625rem;
+  }
+
+  .live-lines li {
+    font-size: 0.75rem;
   }
 }

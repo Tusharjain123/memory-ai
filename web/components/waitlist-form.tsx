@@ -17,7 +17,18 @@ type ModelContext = {
   ) => void | Promise<void>;
 };
 
-export function WaitlistForm({ available }: { available: boolean }) {
+/* The page renders this twice — in the hero and again in the closing
+   section. Ids are prefixed per instance so labels and descriptions never
+   point at the other form, and only the hero registers the agent tool. */
+export function WaitlistForm({
+  available,
+  instance = "hero",
+}: {
+  available: boolean;
+  instance?: "hero" | "closing";
+}) {
+  const id = (name: string) =>
+    instance === "hero" ? name : `${instance}-${name}`;
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
   const [state, setState] = useState<State>("idle");
@@ -83,6 +94,7 @@ export function WaitlistForm({ available }: { available: boolean }) {
     [available],
   );
   useEffect(() => {
+    if (instance !== "hero") return;
     const context = (document as Document & { modelContext?: ModelContext })
       .modelContext;
     if (!context?.registerTool) return;
@@ -127,11 +139,11 @@ export function WaitlistForm({ available }: { available: boolean }) {
       /* Progressive enhancement only. */
     }
     return () => controller.abort();
-  }, [submit, available]);
+  }, [submit, available, instance]);
   return (
-    <div id="early-access" className="hero-signup">
+    <div id={id("early-access")} className="hero-signup">
       <p className="signup-invitation">
-        Your next conversation could be the start.
+        Early access for Android · free for the whole beta.
       </p>
       {state === "success" ? (
         <div className="signup-success" role="status">
@@ -149,13 +161,13 @@ export function WaitlistForm({ available }: { available: boolean }) {
           }}
           aria-label="Early-access signup"
         >
-          <label htmlFor="waitlist-email" className="sr-only">
+          <label htmlFor={id("waitlist-email")} className="sr-only">
             Email address
           </label>
           <div className="honeypot" aria-hidden="true">
-            <label htmlFor="company">Company website</label>
+            <label htmlFor={id("company")}>Company website</label>
             <input
-              id="company"
+              id={id("company")}
               name="company"
               tabIndex={-1}
               autoComplete="off"
@@ -165,7 +177,7 @@ export function WaitlistForm({ available }: { available: boolean }) {
           </div>
           <div className="email-control">
             <input
-              id="waitlist-email"
+              id={id("waitlist-email")}
               name="email"
               type="email"
               autoComplete="email"
@@ -174,7 +186,7 @@ export function WaitlistForm({ available }: { available: boolean }) {
               maxLength={254}
               required
               disabled={!available || state === "pending"}
-              aria-describedby="signup-note signup-message"
+              aria-describedby={`${id("signup-note")} ${id("signup-message")}`}
               aria-invalid={state === "error"}
               value={email}
               onChange={(event) => {
@@ -202,7 +214,7 @@ export function WaitlistForm({ available }: { available: boolean }) {
             </button>
           </div>
           <p
-            id="signup-message"
+            id={id("signup-message")}
             className="form-message"
             role={state === "error" ? "alert" : "status"}
           >
@@ -210,7 +222,7 @@ export function WaitlistForm({ available }: { available: boolean }) {
           </p>
         </form>
       )}
-      <p id="signup-note" className="form-note">
+      <p id={id("signup-note")} className="form-note">
         {!available
           ? "Early-access signup opens soon. Explore the idea in the meantime."
           : "By joining, you agree to receive Memory AI early-access updates. No account needed."}
