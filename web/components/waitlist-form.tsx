@@ -143,7 +143,7 @@ export function WaitlistForm({
   return (
     <div id={id("early-access")} className="hero-signup">
       <p className="signup-invitation">
-        Early access for Android · free for the whole beta.
+        Early access for Android · 5,000 free tokens to start.
       </p>
       {state === "success" ? (
         <div className="signup-success" role="status">

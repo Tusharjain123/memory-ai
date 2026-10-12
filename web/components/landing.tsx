@@ -106,11 +106,16 @@ const faqs = [
     q: "Does a bot join my meeting?",
     a: (
       <>
-        No. Memory AI records from your phone, which makes it a fit for{" "}
-        <a href="#one-to-one">in-person, one-to-one conversations</a>. Online
-        meeting capture is planned, not available yet.
+        No. In person, Memory AI records from your phone, which makes it a fit
+        for <a href="#one-to-one">one-to-one conversations</a>. For Google Meet
+        calls, connect your Google Calendar and import the meeting’s transcript
+        afterwards. Nothing joins the call.
       </>
     ),
+  },
+  {
+    q: "Which online meetings does it work with?",
+    a: "Google Meet, for now. Meet saves transcripts only on Google Workspace plans with transcription turned on, and a transcript can be imported for 30 days after the meeting. Calendar access is read-only; Memory AI never changes your calendar.",
   },
   {
     q: "Does it work when we mix Hindi and English?",
@@ -122,11 +127,15 @@ const faqs = [
   },
   {
     q: "Where do my memories live?",
-    a: "On your phone. Audio goes to cloud services for transcription and AI, and is deleted from our servers as soon as processing finishes. The result waits briefly until your phone collects it. There’s no cloud backup or device sync yet, so clearing the app’s data removes your memories.",
+    a: "On your phone. Audio and imported Meet transcripts go to cloud services for transcription and AI, and are deleted from our servers as soon as processing finishes. The result waits briefly until your phone collects it. Cloud backup is optional and off by default: it saves your folders and profile to your account, while recordings and transcripts stay on your phone. Clearing the app’s data removes anything that isn’t backed up.",
   },
   {
     q: "Is it on iPhone?",
     a: "Not yet. Memory AI is an Android app right now.",
+  },
+  {
+    q: "How much does it cost?",
+    a: "You pay for what you use. Sign in with Google and your account starts with 5,000 free tokens. Each conversation uses tokens based on its length, and you can top up with a prepaid pack whenever you need more. No subscription.",
   },
   {
     q: "Should I tell people I’m recording?",
@@ -134,18 +143,18 @@ const faqs = [
   },
   {
     q: "Can I use it today?",
-    a: "It’s in early access on Android, and free for the whole beta. Join the list and we’ll email you personally when your spot opens.",
+    a: "It’s in early access on Android. Join the list and we’ll email you personally when your spot opens.",
   },
   {
-    q: "What’s coming next?",
-    a: "Online calls, context from your calendar and folders by client are planned. These are plans, not promises. No dates yet.",
+    q: "What’s new?",
+    a: "Google Calendar and Meet transcript import, folders to group memories by client, and optional cloud backup for those folders.",
   },
 ];
 
 const nextSteps = [
   "Join with your email. No account needed.",
   "We email you personally when your spot opens.",
-  "Install the Android app. It’s free for the whole beta, and the first 15 members get a setup call with the founder.",
+  "Install the Android app and sign in with Google. You start with 5,000 free tokens, and the first 15 members get a setup call with the founder.",
 ];
 
 export function Landing({
@@ -345,8 +354,9 @@ export function Landing({
             </h1>
             <p className="hero-description">
               Memory AI remembers what was promised, decided and asked in your
-              client conversations, so you can listen instead of taking notes.
-              No meeting bot. Memories stay on your phone.
+              client conversations, in person or on Google Meet, so you can
+              listen instead of taking notes. No meeting bot. Memories stay on
+              your phone.
             </p>
             <WaitlistForm available={signupAvailable} />
             <p className="hero-perk">
@@ -552,8 +562,8 @@ export function Landing({
           </div>
           <div className="cta-band" data-reveal>
             <p>
-              <strong>Sound like you?</strong> Join early access, free for the
-              whole beta.
+              <strong>Sound like you?</strong> Join early access and start with
+              5,000 free tokens.
             </p>
             <a className="button" href="#early-access" onClick={returnToSignup}>
               Join early access <ArrowUpRight size={19} />
@@ -582,7 +592,7 @@ export function Landing({
                 </p>
                 <p className="privacy-small">
                   Transcription and AI run on cloud services while a recording
-                  is processed.
+                  or Meet transcript is processed.
                 </p>
                 <div
                   className="storage-flow"
@@ -656,8 +666,9 @@ export function Landing({
               </div>
             </div>
             <p className="privacy-limit">
-              Currently, there is no built-in cloud backup or device sync.
-              Removing app data can remove your local memories.
+              Cloud backup is optional and off by default. It covers folders and
+              your profile; recordings and transcripts stay on your phone, so
+              removing app data can remove your local memories.
             </p>
           </div>
         </section>
