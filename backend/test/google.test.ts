@@ -202,6 +202,8 @@ describe("GoogleOAuthService", () => {
         expect(row.google_email).toBe("a@x.com");
         return new Response(null, { status: 201 });
       }
+      // Account rows already exist: nothing new created, no welcome credit.
+      if (url.includes("/rest/v1/users") || url.includes("/rest/v1/user_balance")) return json([]);
       throw new Error(`unexpected ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -209,7 +211,9 @@ describe("GoogleOAuthService", () => {
     await expect(service.connect("u1", "4/code")).resolves.toEqual({ connected: true, email: "a@x.com", status: "active" });
     // Access token is cached from the exchange: no refresh call.
     await expect(service.accessToken("u1")).resolves.toBe("ya29.a");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Token exchange, ensure users row, ensure wallet, save connection.
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("apply_credit_transaction"))).toBe(false);
   });
 
   it("rejects missing scopes and missing refresh tokens", async () => {

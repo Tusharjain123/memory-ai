@@ -58,8 +58,19 @@ function consentErrorMessage(reason: string): string {
       return "Please tick both Calendar and Meet on Google's page so Memory AI can import your meetings.";
     case "expired":
       return "That Google link expired. Tap Connect again.";
+    case "google_token_invalid_grant":
+      return "Google's approval had already been used or expired. Tap Connect again.";
+    case "google_token_invalid_client":
+    case "google_token_unauthorized_client":
+    case "google_not_configured":
+      return "Google Calendar isn't set up correctly on our server yet. Please try again later. (server Google client)";
+    case "google_token_redirect_uri_mismatch":
+      return "Google Calendar isn't set up correctly on our server yet. Please try again later. (redirect URI)";
+    case "google_storage_failed":
+    case "storage_not_configured":
+      return "Connected to Google, but saving the connection failed. Please try again.";
     default:
-      return "Google Calendar couldn't be connected. Please try again.";
+      return `Google Calendar couldn't be connected (${reason}). Please try again.`;
   }
 }
 

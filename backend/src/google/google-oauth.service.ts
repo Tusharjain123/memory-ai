@@ -9,6 +9,7 @@ import type { GoogleConnectionStatus } from "../contracts";
 import { supabaseConfig, supabaseHeaders } from "../supabase/supabase-rest.js";
 import { GoogleApiException, googleNotConnected, googleReconnectRequired } from "./google-errors.js";
 import { decryptToken, encryptToken, parseTokenKey } from "./token-crypto.js";
+import { ensureAccountRows } from "../supabase/account.js";
 
 export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly";
 export const GOOGLE_MEET_SCOPE = "https://www.googleapis.com/auth/meetings.space.readonly";
@@ -90,7 +91,14 @@ export class GoogleOAuthService {
       redirect_uri: redirectUri,
     });
     if (!tokens.access_token) {
-      throw new BadRequestException(tokens.error_description ?? "Google did not accept the sign-in code");
+      // e.g. invalid_client (wrong GOOGLE_CLIENT_SECRET), redirect_uri_mismatch, invalid_grant (code reused/expired)
+      const reason = (tokens.error ?? "rejected").replace(/[^a-z_]/gi, "");
+      this.logger.warn(`Google token exchange failed: ${tokens.error ?? "?"} ${tokens.error_description ?? ""} (redirect_uri=${redirectUri || "native"})`);
+      throw new GoogleApiException(
+        HttpStatus.BAD_REQUEST,
+        `google_token_${reason}`,
+        tokens.error_description ?? "Google did not accept the sign-in code",
+      );
     }
     const missing = missingScopes(tokens.scope);
     if (missing.length) {
@@ -116,6 +124,10 @@ export class GoogleOAuthService {
       refreshCiphertext = existing.refresh_token_ciphertext;
     }
     const email = emailFromIdToken(tokens.id_token);
+    // google_connections references public.users; make sure the row exists.
+    await ensureAccountRows(userId, email).catch((error: unknown) => {
+      this.logger.warn(`ensureAccountRows failed: ${error instanceof Error ? error.message : error}`);
+    });
     await this.upsert({
       user_id: userId,
       google_email: email,
@@ -264,7 +276,9 @@ export class GoogleOAuthService {
       signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
     });
     if (!response.ok) {
-      throw new ServiceUnavailableException(`Could not save Google connection (${response.status})`);
+      const detail = (await response.text().catch(() => "")).slice(0, 300);
+      this.logger.error(`Saving google_connections failed (${response.status}): ${detail}`);
+      throw new GoogleApiException(HttpStatus.SERVICE_UNAVAILABLE, "google_storage_failed", "Could not save the Google connection");
     }
   }
 

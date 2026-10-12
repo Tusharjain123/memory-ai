@@ -177,8 +177,9 @@ export class GoogleOAuthCallbackController {
     } catch (error) {
       const reason = error instanceof GoogleApiException
         ? String((error.getResponse() as { code?: string }).code ?? "failed")
-        : "failed";
-      this.logger.warn(`Google consent callback failed: ${error instanceof Error ? error.message : error}`);
+        : error instanceof Error && /GOOGLE_CLIENT_ID|GOOGLE_TOKEN_ENCRYPTION_KEY/.test(error.message) ? "google_not_configured"
+          : error instanceof Error && /SUPABASE/.test(error.message) ? "storage_not_configured" : "failed";
+      this.logger.warn(`Google consent callback failed [${reason}]: ${error instanceof Error ? error.message : error}`);
       target = appReturnUrl({ error: reason });
     }
     void reply
