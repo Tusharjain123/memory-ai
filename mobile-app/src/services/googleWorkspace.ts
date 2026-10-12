@@ -1,4 +1,4 @@
-import { GoogleSignin, isSuccessResponse } from "@react-native-google-signin/google-signin";
+import * as WebBrowser from "expo-web-browser";
 import type {
   GoogleConnectionStatus,
   GoogleMeeting,
@@ -9,7 +9,6 @@ import type {
 import { getImportedConversationIds, saveConversation, type ConversationCalendarEvent } from "../db/conversations";
 import { useAuthStore } from "../store/useAuthStore";
 import { authorizedFetch } from "./apiFetch";
-import { GOOGLE_WORKSPACE_SCOPES, configureGoogle } from "./googleSignin";
 import { pollProcessingJob } from "./processing";
 
 export const MEET_IMPORT_PREFIX = "google_meet:";
@@ -52,36 +51,41 @@ export async function refreshCalendarStatus(): Promise<GoogleConnectionStatus> {
 }
 
 /** One-time server auth code that includes Calendar + Meet read-only access. */
-async function serverAuthCodeWithScopes(): Promise<string | null> {
-  configureGoogle();
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-  if (!GoogleSignin.getCurrentUser()) {
-    await GoogleSignin.signInSilently().catch(() => undefined);
+/** Friendly text for the reasons the backend reports after Google's consent page. */
+function consentErrorMessage(reason: string): string {
+  switch (reason) {
+    case "google_missing_scopes":
+      return "Please tick both Calendar and Meet on Google's page so Memory AI can import your meetings.";
+    case "expired":
+      return "That Google link expired. Tap Connect again.";
+    default:
+      return "Google Calendar couldn't be connected. Please try again.";
   }
-  if (GoogleSignin.getCurrentUser()) {
-    const added = await GoogleSignin.addScopes({ scopes: GOOGLE_WORKSPACE_SCOPES });
-    if (added && !isSuccessResponse(added)) return null;
-    if (added?.data.serverAuthCode) return added.data.serverAuthCode;
-  }
-  // No code from addScopes (already granted, or no Google session): sign in with the scopes.
-  configureGoogle(GOOGLE_WORKSPACE_SCOPES);
-  const response = await GoogleSignin.signIn();
-  if (!isSuccessResponse(response)) return null;
-  if (!response.data.serverAuthCode) throw new Error("Google didn't return an authorization code");
-  return response.data.serverAuthCode;
 }
 
-/** Asks for Calendar + Meet read-only access. Returns false if the user cancelled. */
+/**
+ * "Connect Calendar & Meet": opens Google's consent page in Chrome over the
+ * app. Google always grants offline access there; the backend stores it and
+ * sends the browser back to memoryai://calendar?google=connected.
+ * Returns false if the person closed the page or declined.
+ */
 export async function connectCalendar(): Promise<boolean> {
-  const code = await serverAuthCodeWithScopes();
-  if (!code) return false;
-  const response = await authorizedFetch("/v1/me/google/connect", {
-    method: "POST",
-    body: JSON.stringify({ serverAuthCode: code }),
-  });
-  if (!response.ok) throw await readError(response, "Could not connect Google Calendar");
-  applyStatus((await response.json()) as GoogleConnectionStatus);
-  return true;
+  const response = await authorizedFetch("/v1/me/google/oauth/start", { method: "POST" });
+  if (!response.ok) throw await readError(response, "Could not start Google sign-in");
+  const { url } = (await response.json()) as { url: string };
+  const result = await WebBrowser.openAuthSessionAsync(url, "memoryai://calendar", { showInRecents: false });
+
+  if (result.type === "success") {
+    const query = new URLSearchParams(result.url.split("?")[1] ?? "");
+    if (query.get("google") === "error") {
+      const reason = query.get("reason") ?? "failed";
+      if (reason === "cancelled") return false;
+      throw new GoogleWorkspaceError(consentErrorMessage(reason), reason, 0);
+    }
+  }
+  // Closed early or returned: the backend is the source of truth either way.
+  const status = await refreshCalendarStatus().catch(() => null);
+  return Boolean(status?.connected);
 }
 
 export async function disconnectCalendar(): Promise<void> {

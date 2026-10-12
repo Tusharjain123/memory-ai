@@ -22,7 +22,7 @@ import { DayTimeline, HOUR_HEIGHT, timelineHours } from "../../src/components/ca
 import { WeekStrip, type DayMarker } from "../../src/components/calendar/WeekStrip";
 import { CalendarScene } from "../../src/components/illustrations/scenes";
 import type { GoogleMeeting } from "../../src/contracts";
-import { connectCalendar, listGoogleMeetings } from "../../src/services/googleWorkspace";
+import { connectCalendar, listGoogleMeetings, refreshCalendarStatus } from "../../src/services/googleWorkspace";
 import { useAuthStore } from "../../src/store/useAuthStore";
 import { useMeetingImports } from "../../src/store/useMeetingImports";
 import {
@@ -108,6 +108,13 @@ export default function CalendarScreen() {
       }
     }
   }, [refreshImported]);
+
+  // Returning from Google's consent page (memoryai://calendar?google=connected) lands here.
+  useFocusEffect(useCallback(() => {
+    if (useAuthStore.getState().status === "signedIn" && useAuthStore.getState().calendarStatus !== "connected") {
+      void refreshCalendarStatus().catch(() => undefined);
+    }
+  }, []));
 
   useFocusEffect(useCallback(() => {
     void load(cursor.year, cursor.month);

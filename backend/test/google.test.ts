@@ -318,3 +318,30 @@ describe("plainDescription", () => {
     expect(plainDescription("x".repeat(2_100))?.endsWith("…")).toBe(true);
   });
 });
+
+describe("Google consent (web) flow", () => {
+  it("signs state for one user and rejects tampering or expiry", async () => {
+    const { signOAuthState, verifyOAuthState, OAUTH_STATE_TTL_MS } = await import("../src/google/google-oauth-flow.js");
+    const key = Buffer.alloc(32, 7);
+    const now = 1_000_000;
+    const state = signOAuthState("user-1", key, now);
+    expect(verifyOAuthState(state, key, now + 1_000)).toBe("user-1");
+    expect(verifyOAuthState(state, Buffer.alloc(32, 8), now)).toBeNull();
+    expect(verifyOAuthState(`${state}x`, key, now)).toBeNull();
+    expect(verifyOAuthState(state, key, now + OAUTH_STATE_TTL_MS + 1)).toBeNull();
+    expect(verifyOAuthState("garbage", key, now)).toBeNull();
+  });
+
+  it("asks Google for offline access with a consent prompt and returns into the app", async () => {
+    const { googleConsentUrl, appReturnUrl } = await import("../src/google/google-oauth-flow.js");
+    const url = new URL(googleConsentUrl({ clientId: "cid", redirectUri: "https://api.example.com/v1/google/oauth/callback", state: "s", loginHint: "a@b.co" }));
+    expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
+    expect(url.searchParams.get("access_type")).toBe("offline");
+    expect(url.searchParams.get("prompt")).toBe("consent");
+    expect(url.searchParams.get("scope")).toContain("calendar.events.readonly");
+    expect(url.searchParams.get("scope")).toContain("meetings.space.readonly");
+    expect(url.searchParams.get("login_hint")).toBe("a@b.co");
+    expect(appReturnUrl({ connected: true })).toBe("memoryai://calendar?google=connected");
+    expect(appReturnUrl({ error: "access denied" })).toBe("memoryai://calendar?google=error&reason=access%20denied");
+  });
+});

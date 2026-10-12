@@ -37,7 +37,7 @@ type TokenResponse = {
   error_description?: string;
 };
 
-function googleConfig() {
+export function googleConfig() {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
   const key = parseTokenKey(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY);
@@ -75,16 +75,19 @@ export class GoogleOAuthService {
   private readonly logger = new Logger(GoogleOAuthService.name);
   private readonly accessTokens = new Map<string, { token: string; expiresAt: number }>();
 
-  /** Exchanges the app's one-time server auth code and stores the refresh token. */
-  async connect(userId: string, serverAuthCode: string): Promise<GoogleConnectionStatus> {
+  /**
+   * Exchanges a one-time authorization code and stores the refresh token.
+   * Native server auth codes have no redirect URI; codes from the web consent
+   * flow must be exchanged with the same redirect URI they were issued for.
+   */
+  async connect(userId: string, serverAuthCode: string, redirectUri = ""): Promise<GoogleConnectionStatus> {
     const { clientId, clientSecret, key } = googleConfig();
     const tokens = await this.tokenRequest({
       code: serverAuthCode,
       client_id: clientId,
       client_secret: clientSecret,
       grant_type: "authorization_code",
-      // Native (Android/iOS) server auth codes have no redirect URI.
-      redirect_uri: "",
+      redirect_uri: redirectUri,
     });
     if (!tokens.access_token) {
       throw new BadRequestException(tokens.error_description ?? "Google did not accept the sign-in code");

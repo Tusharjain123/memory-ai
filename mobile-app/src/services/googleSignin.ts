@@ -20,10 +20,9 @@ export function configureGoogle(extraScopes: string[] = []): void {
     scopes,
     // Lets "Connect Calendar & Meet" hand the backend a one-time server auth code.
     offlineAccess: true,
-    // Google only returns a refresh token on first consent; when connecting
-    // Calendar & Meet, always ask for one so reconnecting (or a new device,
-    // or a backend without the old token) never fails with "no offline access".
-    forceCodeForRefreshToken: extraScopes.length > 0,
+    // Not forceCodeForRefreshToken: it makes Google demand "remote consent",
+    // which this sign-in screen closes without showing. connectCalendar()
+    // handles a missing refresh token by revoking and asking once more.
   });
   configuredScopes = key;
 }
