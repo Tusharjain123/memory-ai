@@ -1,5 +1,6 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import type { FeedbackInput } from "./feedback.types.js";
+import { supabaseHeaders } from "../supabase/supabase-rest.js";
 
 @Injectable()
 export class FeedbackService {
@@ -12,12 +13,7 @@ export class FeedbackService {
 
     const response = await fetch(`${url}/rest/v1/app_feedback`, {
       method: "POST",
-      headers: {
-        apikey: secret,
-        Authorization: `Bearer ${secret}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
+      headers: supabaseHeaders(secret, { Prefer: "return=minimal" }),
       body: JSON.stringify({
         category: input.category,
         message: input.message,

@@ -4,6 +4,7 @@ import type {
   EmbeddingVectorResponse,
 } from "../contracts";
 import { API_URL } from "../config/api";
+import { authHeaders, readApiError } from "./apiFetch";
 import {
   getConversationContext,
   keywordSearch,
@@ -31,10 +32,10 @@ export function turnsToHistory(turns: AskTurn[]): AskHistoryMessage[] {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error((await response.text()) || `Request failed (${response.status})`);
+  if (!response.ok) throw await readApiError(response, "Request failed");
   return (await response.json()) as T;
 }
 

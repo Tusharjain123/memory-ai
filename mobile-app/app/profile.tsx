@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { deleteUserProfile, EMPTY_PROFILE, getUserProfile, saveUserProfile, type UserProfile } from "../src/db/profile";
 import { KeyboardScreen } from "../src/components/KeyboardScreen";
+import { pushProfileToCloud } from "../src/services/profileSync";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 function ProfileField({ label, value, placeholder, icon, keyboardType = "default", onChangeText }: {
@@ -61,6 +62,8 @@ export default function ProfileScreen() {
     try {
       await saveUserProfile(profile);
       setHasProfile(true);
+      // Only uploads when connected and the user turned cloud storage on.
+      void pushProfileToCloud().catch(() => undefined);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Profile saved", "Your details have been updated.");
     } catch (cause) {

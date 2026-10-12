@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   deletePendingRecording,
@@ -19,6 +19,7 @@ import {
 } from "../src/services/processingOrchestrator";
 import { relativeDate } from "../src/utils/format";
 import { processingStageLabel } from "../src/utils/processingTimeouts";
+import { CelebrateScene } from "../src/components/illustrations/scenes";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 export default function PendingRecordingsScreen() {
@@ -101,13 +102,8 @@ export default function PendingRecordingsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyVisual} accessibilityLabel="No recordings are waiting to process">
-            <Image
-              source={isDark
-                ? require("../assets/empty-saved-recordings-dark.png")
-                : require("../assets/empty-saved-recordings.png")}
-              resizeMode="contain"
-              style={styles.emptyImage}
-            />
+            <CelebrateScene size={240} />
+            <Text style={[styles.emptyText, { color: colors.muted }]}>All caught up. Every recording has been turned into a memory.</Text>
           </View>
         }
         renderItem={({ item, index }) => {
@@ -123,6 +119,11 @@ export default function PendingRecordingsScreen() {
                 : item.uploadId
                   ? " · Upload paused"
                   : " · Waiting securely";
+          const lastError = snapshot?.error ?? item.lastError ?? null;
+          // Billing blockers get a direct fix instead of a generic failure note.
+          const blocker = lastError && /top up|credit|tokens/i.test(lastError)
+            ? "credit"
+            : lastError && /sign in/i.test(lastError) ? "signin" : null;
           return (
             <View style={[styles.card, { backgroundColor: colors.surface }, !isDark && shadows.card, index > 0 && { marginTop: spacing.sm }]}>
               <View style={styles.cardTop}>
@@ -138,7 +139,33 @@ export default function PendingRecordingsScreen() {
                 </View>
                 <Ionicons name="lock-closed" size={16} color={colors.sage} />
               </View>
-              {item.lastError || snapshot?.error ? (
+              {isProcessing && snapshot?.preview ? (
+                <View style={[styles.preview, { backgroundColor: colors.surfaceMuted }]}>
+                  <Text style={[styles.previewLabel, { color: colors.muted }]}>
+                    {snapshot.preview.summary ? snapshot.preview.title || "Summary" : "Transcript so far"}
+                  </Text>
+                  <Text numberOfLines={snapshot.preview.summary ? 5 : 6} style={[styles.previewText, { color: colors.ink }]}>
+                    {snapshot.preview.summary || snapshot.preview.transcript}
+                  </Text>
+                </View>
+              ) : null}
+              {lastError && blocker ? (
+                <View style={[styles.note, { backgroundColor: colors.warmSoft }]}>
+                  <Ionicons name={blocker === "credit" ? "wallet-outline" : "person-circle-outline"} size={17} color={colors.warm} />
+                  <Text numberOfLines={3} style={[styles.noteText, { color: colors.ink }]}>
+                    {blocker === "credit"
+                      ? "Not enough tokens to process this one. Top up, then tap Continue."
+                      : "Sign in to process this recording. New accounts get 5,000 free tokens."}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push("/wallet" as never)}
+                    style={({ pressed }) => [styles.noteAction, { backgroundColor: colors.ink }, pressed && { opacity: 0.8 }]}
+                  >
+                    <Text style={[styles.noteActionText, { color: colors.background }]}>{blocker === "credit" ? "Top up" : "Sign in"}</Text>
+                  </Pressable>
+                </View>
+              ) : lastError ? (
                 <View style={[styles.note, { backgroundColor: colors.surfaceMuted }]}>
                   <Ionicons name="information-circle-outline" size={17} color={colors.muted} />
                   <Text numberOfLines={2} style={[styles.noteText, { color: colors.muted }]}>Last attempt didn’t finish. Your audio was kept.</Text>
@@ -204,8 +231,8 @@ const styles = StyleSheet.create({
   header: { paddingTop: spacing.md, paddingBottom: spacing.xl },
   heading: { fontSize: typeScale.title1, fontWeight: "800", letterSpacing: -1 },
   intro: { fontSize: typeScale.body, lineHeight: 22, marginTop: spacing.xs, marginBottom: spacing.md },
-  emptyVisual: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: spacing.lg },
-  emptyImage: { width: 310, height: 310, borderRadius: radii.xl },
+  emptyVisual: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: spacing.lg, gap: spacing.sm },
+  emptyText: { fontSize: typeScale.body, lineHeight: 22, textAlign: "center", paddingHorizontal: spacing.lg },
   card: { borderRadius: radii.lg, padding: spacing.md },
   cardTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   audioIcon: { width: 48, height: 48, borderRadius: 17, alignItems: "center", justifyContent: "center" },
@@ -213,7 +240,12 @@ const styles = StyleSheet.create({
   title: { fontSize: typeScale.bodyLarge, fontWeight: "800" },
   date: { fontSize: typeScale.caption, marginTop: 3 },
   note: { borderRadius: radii.sm, flexDirection: "row", alignItems: "center", gap: spacing.xs, padding: spacing.sm, marginTop: spacing.md },
+  noteAction: { borderRadius: 999, paddingHorizontal: 12, minHeight: 30, justifyContent: "center" },
+  noteActionText: { fontSize: 12.5, fontWeight: "800" },
   noteText: { flex: 1, fontSize: typeScale.caption, lineHeight: 17 },
+  preview: { borderRadius: radii.sm, padding: spacing.sm, marginTop: spacing.md, gap: 4 },
+  previewLabel: { fontSize: typeScale.caption, fontWeight: "800" },
+  previewText: { fontSize: typeScale.caption, lineHeight: 18 },
   player: { marginTop: spacing.md },
   actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
   retry: { flex: 1, minHeight: 50, borderRadius: radii.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },

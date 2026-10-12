@@ -1,18 +1,16 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons } from "@expo/vector-icons";
+import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import * as Haptics from "expo-haptics";
-import { useMemo, useState } from "react";
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { radii, shadows, spacing, typeScale, useAppTheme } from "../theme";
+import { useEffect, useMemo, useState } from "react";
+import { Linking, StyleSheet, Text, View } from "react-native";
+import { connectGoogle } from "../services/cloudAuth";
+import { connectCalendar } from "../services/googleWorkspace";
+import { useAuthStore } from "../store/useAuthStore";
+import { GOALS, goalCaption, homePriority, joinGoals } from "../utils/goals";
+import { spacing, useAppTheme } from "../theme";
+import { CalendarScene, CaptureScene, CelebrateScene, MemoryCardsScene, MicScene, PrivacyScene } from "./illustrations/scenes";
+import { OnboardingFrame, type FrameAction } from "./onboarding/OnboardingFrame";
+import { ChoicePill, LiveCaption, NameField, OptionCard, PromiseRow, StatusLine, SummaryCard } from "./onboarding/parts";
 
 export type OnboardingDetails = {
   name: string;
@@ -24,415 +22,295 @@ type FirstRunGuideProps = {
   onFinish: (destination: "home" | "record", details?: OnboardingDetails) => Promise<void>;
 };
 
-const OCCUPATIONS = [
-  "Founder / business owner",
-  "Professional / employee",
-  "Student",
-  "Freelancer / consultant",
-  "Parent / caregiver",
-] as const;
-
-const INTERESTS = [
-  "Remember conversations",
-  "Stay on top of commitments",
-  "Prepare for important people",
-  "Capture ideas and reflections",
-] as const;
-
-const OTHER = "Other";
-
-type QuestionStep = {
-  kind: "intro" | "privacy" | "name" | "occupation" | "interests";
-  icon?: keyof typeof Ionicons.glyphMap;
-  title: string;
-  body: string;
-};
-
-const STEPS: QuestionStep[] = [
-  {
-    kind: "intro",
-    icon: "sparkles-outline",
-    title: "Keep the moments\nthat matter.",
-    body: "Record a conversation, then Memory turns it into a clear summary, people, and commitments.",
-  },
-  {
-    kind: "name",
-    title: "What should we\ncall you?",
-    body: "A name helps Memory personalize how it talks to you. You can change this later.",
-  },
-  {
-    kind: "occupation",
-    title: "What best describes\nyour day-to-day?",
-    body: "Pick one option, or choose Other and type your own.",
-  },
-  {
-    kind: "interests",
-    title: "What should Memory\nhelp with?",
-    body: "Select all that apply. You can add your own with Other.",
-  },
-  {
-    kind: "privacy",
-    icon: "shield-checkmark-outline",
-    title: "Private by\ndefault.",
-    body: "Your permanent memory and recording stay on this device. When you finish, audio is sent temporarily for transcription and AI processing, then removed from the processing server.",
-  },
+const GOAL_OPTIONS: { goal: string; icon: keyof typeof Ionicons.glyphMap; description: string }[] = [
+  { goal: GOALS.conversations, icon: "chatbubbles-outline", description: "Find what was said, weeks later." },
+  { goal: GOALS.commitments, icon: "checkmark-done-outline", description: "Never drop a promise you made." },
+  { goal: GOALS.people, icon: "people-outline", description: "Walk into every meeting prepared." },
+  { goal: GOALS.ideas, icon: "bulb-outline", description: "Think out loud, keep the good parts." },
 ];
 
+const ROLES = ["Founder", "Professional", "Student", "Freelancer", "Parent"] as const;
+
+type StepId = "welcome" | "name" | "goals" | "demo" | "privacy" | "calendar" | "mic" | "ready";
+
+const GOAL_SHORT: Record<string, string> = {
+  conversations: "Conversations",
+  commitments: "Commitments",
+  people: "People",
+  ideas: "Ideas",
+};
+
 export function FirstRunGuide({ onFinish }: FirstRunGuideProps) {
-  const { colors, isDark } = useAppTheme();
-  const [step, setStep] = useState(0);
+  const { colors } = useAppTheme();
+  const cloudStatus = useAuthStore((state) => state.status);
+  const calendarStatus = useAuthStore((state) => state.calendarStatus);
+  const calendarEmail = useAuthStore((state) => state.calendarEmail ?? state.email);
+
+  const steps = useMemo<StepId[]>(() => [
+    "welcome", "name", "goals", "demo", "privacy",
+    ...(cloudStatus === "unavailable" ? [] : ["calendar" as const]),
+    "mic", "ready",
+  ], [cloudStatus]);
+
+  const [index, setIndex] = useState(0);
   const [finishing, setFinishing] = useState(false);
   const [name, setName] = useState("");
-  const [occupationChoice, setOccupationChoice] = useState<string | null>(null);
-  const [occupationOther, setOccupationOther] = useState("");
-  const [interestChoices, setInterestChoices] = useState<string[]>([]);
-  const [interestOther, setInterestOther] = useState("");
-  const current = STEPS[step]!;
-  const lastStep = step === STEPS.length - 1;
-  const questionStep = current.kind === "name" || current.kind === "occupation" || current.kind === "interests";
+  const [goals, setGoals] = useState<string[]>([]);
+  const [role, setRole] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [mic, setMic] = useState<"unknown" | "granted" | "denied">("unknown");
 
-  const details = useMemo<OnboardingDetails>(() => {
-    const occupation = occupationChoice === OTHER
-      ? occupationOther.trim()
-      : (occupationChoice ?? "").trim();
-    const goals = [
-      ...interestChoices.filter((item) => item !== OTHER),
-      ...(interestChoices.includes(OTHER) && interestOther.trim() ? [interestOther.trim()] : []),
-    ];
-    return {
-      name: name.trim(),
-      occupation,
-      onboardingGoal: goals.join(" · "),
-    };
-  }, [interestChoices, interestOther, name, occupationChoice, occupationOther]);
+  const step = steps[Math.min(index, steps.length - 1)]!;
+  const progress = (Math.min(index, steps.length - 1) + 1) / steps.length;
+  const firstName = name.trim().split(/\s+/)[0] ?? "";
+  const calendarConnected = calendarStatus === "connected";
 
-  function toggleInterest(option: string): void {
+  useEffect(() => {
+    void getRecordingPermissionsAsync()
+      .then((permission) => { if (permission.granted) setMic("granted"); })
+      .catch(() => undefined);
+  }, []);
+
+  const details = useMemo<OnboardingDetails>(() => ({
+    name: name.trim(),
+    occupation: role ?? "",
+    onboardingGoal: joinGoals(goals),
+  }), [goals, name, role]);
+
+  function next(): void {
     void Haptics.selectionAsync();
-    setInterestChoices((current) => (
-      current.includes(option)
-        ? current.filter((item) => item !== option)
-        : [...current, option]
-    ));
+    setIndex((value) => Math.min(value + 1, steps.length - 1));
   }
 
-  function selectOccupation(option: string): void {
+  function back(): void {
     void Haptics.selectionAsync();
-    setOccupationChoice(option);
-    if (option !== OTHER) setOccupationOther("");
+    setIndex((value) => Math.max(value - 1, 0));
   }
 
-  async function finish(destination: "home" | "record", saveDetails = false): Promise<void> {
+  async function finish(destination: "home" | "record"): Promise<void> {
     if (finishing) return;
     setFinishing(true);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
-      await onFinish(destination, saveDetails ? details : undefined);
+      // Whatever they typed is kept, even when skipping.
+      await onFinish(destination, details);
     } finally {
       setFinishing(false);
     }
   }
 
-  function goNext(): void {
-    if (lastStep) {
-      void finish("record", true);
-      return;
-    }
+  function toggleGoal(goal: string): void {
     void Haptics.selectionAsync();
-    setStep((value) => value + 1);
+    setGoals((current) => (current.includes(goal) ? current.filter((item) => item !== goal) : [...current, goal]));
   }
 
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={[styles.page, { backgroundColor: colors.background }]}
-    >
-      <View style={styles.topRow}>
-        <Image source={require("../../assets/memory-ai-logo.png")} style={[styles.logo, { borderColor: colors.line }]} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Skip introduction"
-          disabled={finishing}
-          onPress={() => void finish("home")}
-          hitSlop={10}
-          style={({ pressed }) => [styles.skip, pressed && { opacity: 0.55 }]}
-        >
-          <Text style={[styles.skipText, { color: colors.muted }]}>Skip</Text>
-        </Pressable>
-      </View>
+  async function connect(): Promise<void> {
+    setConnecting(true);
+    setCalendarError(null);
+    try {
+      if (useAuthStore.getState().status !== "signedIn") {
+        const signedIn = await connectGoogle();
+        if (!signedIn) return;
+      }
+      if (await connectCalendar()) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (cause) {
+      setCalendarError(cause instanceof Error ? cause.message : "Could not connect Google Calendar");
+    } finally {
+      setConnecting(false);
+    }
+  }
 
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, questionStep && styles.detailsContent]}
-      >
-        {!questionStep && current.icon ? (
-          <View style={[styles.iconStage, { backgroundColor: colors.accentSoft }, !isDark && shadows.floating]}>
-            <Ionicons name={current.icon} size={56} color={colors.accent} />
-            <View style={[styles.iconBadge, { backgroundColor: colors.sageSoft, borderColor: colors.surface }]}>
-              <Ionicons name={step === 0 ? "mic" : "lock-closed"} size={18} color={colors.sage} />
+  async function askMic(): Promise<void> {
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      setMic(permission.granted ? "granted" : "denied");
+      if (permission.granted) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => setIndex((value) => Math.min(value + 1, steps.length - 1)), 450);
+      }
+    } catch {
+      setMic("denied");
+    }
+  }
+
+  const common = {
+    stepKey: step,
+    progress,
+    onBack: index > 0 ? back : undefined,
+    onSkip: step === "ready" ? undefined : () => void finish("home"),
+  };
+  const later = (label = "Maybe later"): FrameAction => ({ label, onPress: next });
+
+  switch (step) {
+    case "welcome":
+      return (
+        <OnboardingFrame
+          {...common}
+          art={<CaptureScene size={290} />}
+          eyebrow="Memory AI"
+          title={"Never lose what\nwas said."}
+          body="Record a conversation. Memory turns it into a summary, the people involved and every promise made."
+          primary={{ label: "Get started", onPress: next }}
+          secondary={{ label: "No account needed", onPress: next }}
+        />
+      );
+
+    case "name":
+      return (
+        <OnboardingFrame
+          {...common}
+          eyebrow="Nice to meet you"
+          title={"What should we\ncall you?"}
+          body="Just a first name is perfect. It makes Memory feel like yours."
+          primary={{ label: firstName ? `Continue as ${firstName}` : "Continue", onPress: next }}
+          secondary={later("I'll add it later")}
+        >
+          <NameField value={name} onChange={setName} onSubmit={next} />
+        </OnboardingFrame>
+      );
+
+    case "goals":
+      return (
+        <OnboardingFrame
+          {...common}
+          eyebrow={firstName ? `Tell us, ${firstName}` : "Make it yours"}
+          title={"What should Memory\nhelp you with?"}
+          primary={{ label: "Continue", onPress: next }}
+        >
+          <View style={styles.stack}>
+            {GOAL_OPTIONS.map((option) => (
+              <OptionCard
+                key={option.goal}
+                icon={option.icon}
+                title={option.goal}
+                description={option.description}
+                selected={goals.includes(option.goal)}
+                onPress={() => toggleGoal(option.goal)}
+              />
+            ))}
+            <LiveCaption text={goalCaption(goals)} />
+            <Text style={[styles.label, { color: colors.muted }]}>YOUR DAY-TO-DAY · OPTIONAL</Text>
+            <View style={styles.pills} accessibilityRole="radiogroup" accessibilityLabel="Your day-to-day (optional)">
+              {ROLES.map((option) => (
+                <ChoicePill
+                  key={option}
+                  label={option}
+                  selected={role === option}
+                  onPress={() => {
+                    void Haptics.selectionAsync();
+                    setRole((current) => (current === option ? null : option));
+                  }}
+                />
+              ))}
             </View>
           </View>
-        ) : null}
+        </OnboardingFrame>
+      );
 
-        <Text
-          accessibilityRole="header"
-          style={[styles.title, questionStep && styles.detailsTitle, { color: colors.ink }]}
+    case "demo":
+      return (
+        <OnboardingFrame
+          {...common}
+          art={<MemoryCardsScene size={310} />}
+          eyebrow="Here's the magic"
+          title={"Every conversation\nbecomes a memory."}
+          body="Ask it anything later: “What did I promise Priya?”"
+          primary={{ label: "Love it", onPress: next }}
+        />
+      );
+
+    case "privacy":
+      return (
+        <OnboardingFrame
+          {...common}
+          art={<PrivacyScene size={250} />}
+          eyebrow="Your memories, your phone"
+          title="Private by default."
+          primary={{ label: "Sounds good", onPress: next, icon: "shield-checkmark" }}
         >
-          {current.title}
-        </Text>
-        <Text
-          style={[
-            styles.body,
-            questionStep && styles.detailsBody,
-            { color: colors.muted },
-          ]}
+          <View style={styles.stack}>
+            <PromiseRow icon="phone-portrait-outline" title="Lives on this device" body="Your memory library is stored here, not on our servers." />
+            <PromiseRow icon="flash-outline" title="Processed, then removed" body="Audio is sent only to transcribe, then deleted from the server." />
+            <PromiseRow icon="trash-outline" title="Yours to delete" body="Remove any memory, or everything, at any time." />
+          </View>
+        </OnboardingFrame>
+      );
+
+    case "calendar":
+      return (
+        <OnboardingFrame
+          {...common}
+          art={<CalendarScene size={260} />}
+          eyebrow="Optional"
+          title={"Bring your meetings\nalong."}
+          body="Sign in with Google to get 5,000 free AI tokens, see what's next on your calendar and import Google Meet transcripts."
+          primary={calendarConnected
+            ? { label: "Continue", onPress: next }
+            : { label: "Connect Google Calendar", icon: "logo-google", onPress: () => void connect(), busy: connecting }}
+          secondary={calendarConnected ? undefined : later()}
         >
-          {current.body}
-        </Text>
+          {calendarConnected ? (
+            <StatusLine tone="success" text={calendarEmail ? `Connected as ${calendarEmail}` : "Calendar connected"} />
+          ) : calendarError ? (
+            <StatusLine tone="error" text={calendarError} />
+          ) : (
+            <StatusLine tone="info" text="Read-only. You can disconnect anytime." />
+          )}
+        </OnboardingFrame>
+      );
 
-        {current.kind === "name" ? (
-          <View style={styles.form}>
-            <TextInput
-              accessibilityLabel="Your name"
-              value={name}
-              onChangeText={setName}
-              placeholder="Your name"
-              placeholderTextColor={colors.faint}
-              autoCapitalize="words"
-              autoFocus
-              returnKeyType="next"
-              onSubmitEditing={goNext}
-              style={[styles.input, { color: colors.ink, backgroundColor: colors.surface, borderColor: colors.line }]}
-            />
-          </View>
-        ) : null}
-
-        {current.kind === "occupation" ? (
-          <View style={styles.form}>
-            {[...OCCUPATIONS, OTHER].map((option) => {
-              const selected = occupationChoice === option;
-              return (
-                <Pressable
-                  key={option}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  onPress={() => selectOccupation(option)}
-                  style={({ pressed }) => [
-                    styles.choice,
-                    {
-                      backgroundColor: selected ? colors.accentSoft : colors.surface,
-                      borderColor: selected ? colors.accent : colors.line,
-                    },
-                    pressed && { opacity: 0.72 },
-                  ]}
-                >
-                  <Text style={[styles.choiceText, { color: colors.ink }]}>{option}</Text>
-                  <Ionicons
-                    name={selected ? "checkmark-circle" : "ellipse-outline"}
-                    size={21}
-                    color={selected ? colors.accent : colors.faint}
-                  />
-                </Pressable>
-              );
-            })}
-            {occupationChoice === OTHER ? (
-              <TextInput
-                accessibilityLabel="Describe your day-to-day"
-                value={occupationOther}
-                onChangeText={setOccupationOther}
-                placeholder="Type your own answer"
-                placeholderTextColor={colors.faint}
-                autoCapitalize="sentences"
-                autoFocus
-                style={[styles.input, { color: colors.ink, backgroundColor: colors.surface, borderColor: colors.line }]}
-              />
-            ) : null}
-          </View>
-        ) : null}
-
-        {current.kind === "interests" ? (
-          <View style={styles.form}>
-            {[...INTERESTS, OTHER].map((option) => {
-              const selected = interestChoices.includes(option);
-              return (
-                <Pressable
-                  key={option}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected }}
-                  onPress={() => toggleInterest(option)}
-                  style={({ pressed }) => [
-                    styles.choice,
-                    {
-                      backgroundColor: selected ? colors.accentSoft : colors.surface,
-                      borderColor: selected ? colors.accent : colors.line,
-                    },
-                    pressed && { opacity: 0.72 },
-                  ]}
-                >
-                  <Text style={[styles.choiceText, { color: colors.ink }]}>{option}</Text>
-                  <Ionicons
-                    name={selected ? "checkbox" : "square-outline"}
-                    size={21}
-                    color={selected ? colors.accent : colors.faint}
-                  />
-                </Pressable>
-              );
-            })}
-            {interestChoices.includes(OTHER) ? (
-              <TextInput
-                accessibilityLabel="Describe what Memory should help with"
-                value={interestOther}
-                onChangeText={setInterestOther}
-                placeholder="Type your own answer"
-                placeholderTextColor={colors.faint}
-                autoCapitalize="sentences"
-                autoFocus
-                style={[styles.input, { color: colors.ink, backgroundColor: colors.surface, borderColor: colors.line }]}
-              />
-            ) : null}
-          </View>
-        ) : null}
-
-        <View accessibilityLabel={`Step ${step + 1} of ${STEPS.length}`} style={styles.dots}>
-          {STEPS.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.dot, { backgroundColor: index === step ? colors.accent : colors.line }]}
-            />
-          ))}
-        </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <Pressable
-          accessibilityRole="button"
-          disabled={finishing}
-          onPress={goNext}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: colors.accent },
-            pressed && { opacity: 0.8, transform: [{ scale: 0.985 }] },
-          ]}
+    case "mic":
+      return (
+        <OnboardingFrame
+          {...common}
+          art={<MicScene size={250} />}
+          eyebrow="One last thing"
+          title={"Memory only listens\nwhen you tap."}
+          body="No background listening, ever. You start and stop every recording."
+          primary={mic === "granted"
+            ? { label: "Continue", onPress: next }
+            : mic === "denied"
+              ? { label: "Open Settings", icon: "settings-outline", onPress: () => void Linking.openSettings() }
+              : { label: "Allow microphone", icon: "mic", onPress: () => void askMic() }}
+          secondary={mic === "granted" ? undefined : later(mic === "denied" ? "Continue without it" : "Not now")}
         >
-          <Ionicons name={lastStep ? "mic" : "arrow-forward"} size={20} color="#FFFFFF" />
-          <Text style={styles.primaryText}>
-            {finishing ? "Opening Memory…" : lastStep ? "Record your first memory" : "Continue"}
-          </Text>
-        </Pressable>
-        {lastStep ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={finishing}
-            onPress={() => void finish("home", true)}
-            style={styles.secondaryButton}
-          >
-            <Text style={[styles.secondaryText, { color: colors.muted }]}>Explore on my own</Text>
-          </Pressable>
-        ) : questionStep ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setStep((value) => value + 1)}
-            style={styles.secondaryButton}
-          >
-            <Text style={[styles.secondaryText, { color: colors.muted }]}>Skip for now</Text>
-          </Pressable>
-        ) : (
-          <Text style={[styles.hint, { color: colors.faint }]}>No account or setup required</Text>
-        )}
-      </View>
-    </KeyboardAvoidingView>
-  );
+          {mic === "granted" ? <StatusLine tone="success" text="Microphone ready" /> : null}
+          {mic === "denied" ? <StatusLine tone="info" text="You can turn it on in Settings whenever you're ready." /> : null}
+        </OnboardingFrame>
+      );
+
+    case "ready": {
+      const leads = homePriority(goals).map((key) => GOAL_SHORT[key]).join(", ");
+      return (
+        <OnboardingFrame
+          {...common}
+          art={<CelebrateScene size={220} />}
+          eyebrow="All set"
+          title={firstName ? `Welcome in,\n${firstName}.` : "You're all set."}
+          body="Your first memory takes a minute. Try it on your next chat, call or meeting."
+          primary={{ label: "Record your first memory", icon: "mic", onPress: () => void finish("record"), busy: finishing }}
+          secondary={{ label: "Look around first", onPress: () => void finish("home"), disabled: finishing }}
+        >
+          <SummaryCard
+            rows={[
+              { icon: "sparkles-outline", label: "Leading with", value: leads },
+              ...(steps.includes("calendar")
+                ? [{ icon: "calendar-outline" as const, label: "Calendar", value: calendarConnected ? "Connected" : "Not yet" }]
+                : []),
+              { icon: "mic-outline" as const, label: "Microphone", value: mic === "granted" ? "Ready" : "Ask when recording" },
+            ]}
+          />
+        </OnboardingFrame>
+      );
+    }
+  }
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: 58, paddingBottom: spacing.xxl },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  logo: { width: 44, height: 44, borderRadius: 14, borderWidth: 1 },
-  skip: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs },
-  skipText: { fontSize: typeScale.body, fontWeight: "700" },
-  content: {
-    flexGrow: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: spacing.xxl,
-  },
-  detailsContent: { justifyContent: "flex-start", paddingTop: spacing.xxl, alignItems: "stretch" },
-  iconStage: {
-    width: 148,
-    height: 148,
-    borderRadius: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    alignSelf: "center",
-  },
-  iconBadge: {
-    position: "absolute",
-    right: -5,
-    bottom: -5,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: typeScale.display,
-    lineHeight: 50,
-    letterSpacing: -1.4,
-    fontWeight: "800",
-    textAlign: "center",
-    marginTop: spacing.xxxl,
-  },
-  detailsTitle: { fontSize: typeScale.title1, lineHeight: 40, marginTop: 0, textAlign: "left" },
-  body: {
-    maxWidth: 330,
-    fontSize: typeScale.bodyLarge,
-    lineHeight: 25,
-    textAlign: "center",
-    marginTop: spacing.md,
-    alignSelf: "center",
-  },
-  detailsBody: { maxWidth: "100%", textAlign: "left", alignSelf: "stretch" },
-  form: { width: "100%", gap: spacing.sm, marginTop: spacing.xl },
-  input: {
-    minHeight: 54,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    fontSize: typeScale.body,
-  },
-  choice: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  choiceText: { flex: 1, fontSize: 15, fontWeight: "700" },
-  dots: { flexDirection: "row", gap: spacing.xs, marginTop: spacing.xxxl, alignSelf: "center" },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  footer: { gap: spacing.sm },
-  primaryButton: {
-    minHeight: 60,
-    borderRadius: radii.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-  },
-  primaryText: { color: "#FFFFFF", fontSize: typeScale.bodyLarge, fontWeight: "800" },
-  secondaryButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
-  secondaryText: { fontSize: typeScale.body, fontWeight: "700" },
-  hint: {
-    minHeight: 44,
-    fontSize: typeScale.caption,
-    fontWeight: "700",
-    textAlign: "center",
-    textAlignVertical: "center",
-  },
+  stack: { gap: spacing.sm },
+  label: { fontSize: 11, fontWeight: "800", letterSpacing: 1, marginTop: spacing.sm },
+  pills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
 });

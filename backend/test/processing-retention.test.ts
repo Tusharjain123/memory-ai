@@ -42,6 +42,7 @@ describe("temporary processing result retention", () => {
       {} as never,
       {} as never,
       { sweepExpired } as never,
+      {} as never,
     );
     Object.assign(service, { queue: { clean } });
 
@@ -69,6 +70,7 @@ describe("temporary processing result retention", () => {
       {} as never,
       {} as never,
       { take } as never,
+      {} as never,
     );
     Object.assign(service, {
       queue: {
@@ -97,6 +99,7 @@ describe("temporary processing result retention", () => {
       {} as never,
       {} as never,
       { take: vi.fn().mockResolvedValue(null) } as never,
+      {} as never,
     );
     Object.assign(service, {
       queue: {

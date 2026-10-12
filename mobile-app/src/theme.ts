@@ -18,6 +18,8 @@ export type AppColors = {
   danger: string;
   dangerSoft: string;
   overlay: string;
+  warm: string;
+  warmSoft: string;
 };
 
 export const lightColors: AppColors = {
@@ -37,6 +39,8 @@ export const lightColors: AppColors = {
   danger: "#E0474C",
   dangerSoft: "#FDECEE",
   overlay: "rgba(18,52,107,0.08)",
+  warm: "#E8875A",
+  warmSoft: "#FFF1E8",
 };
 
 export const darkColors: AppColors = {
@@ -56,7 +60,46 @@ export const darkColors: AppColors = {
   danger: "#F18A80",
   dangerSoft: "#3B2423",
   overlay: "rgba(0,0,0,0.22)",
+  warm: "#F4A57E",
+  warmSoft: "#3A2A24",
 };
+
+/** Meeting tints: soft background, readable ink and a strong edge colour. */
+export type Pastel = { soft: string; ink: string; edge: string };
+
+const LIGHT_PASTELS: Pastel[] = [
+  { soft: "#E3F6EF", ink: "#0F5C4F", edge: "#16AF99" },
+  { soft: "#FFF0DF", ink: "#7A4515", edge: "#E8875A" },
+  { soft: "#ECEBFF", ink: "#3B3486", edge: "#7C72E8" },
+  { soft: "#FFE8EE", ink: "#80283F", edge: "#E26487" },
+  { soft: "#E5F1FF", ink: "#1C4A7E", edge: "#4C8EDB" },
+];
+
+const DARK_PASTELS: Pastel[] = [
+  { soft: "#123D3A", ink: "#BDF2E7", edge: "#36D2BC" },
+  { soft: "#3A2A1C", ink: "#FFD9BC", edge: "#F4A57E" },
+  { soft: "#25234A", ink: "#D8D4FF", edge: "#9C93F2" },
+  { soft: "#3D1F2A", ink: "#FFC9D6", edge: "#F08AA6" },
+  { soft: "#172F4D", ink: "#C8E0FF", edge: "#76AAEA" },
+];
+
+function hashSeed(seed: string): number {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) hash = (hash * 31 + seed.charCodeAt(index)) | 0;
+  return Math.abs(hash);
+}
+
+/** Stable pastel for a meeting or person, so the same event keeps its colour everywhere. */
+export function pastelFor(seed: string, isDark: boolean): Pastel {
+  const palette = isDark ? DARK_PASTELS : LIGHT_PASTELS;
+  return palette[hashSeed(seed) % palette.length]!;
+}
+
+/** Editorial serif for large headlines; body text stays on the system font. */
+export const fonts = {
+  display: "InstrumentSerif_400Regular",
+  displayItalic: "InstrumentSerif_400Regular_Italic",
+} as const;
 
 // Backward-compatible light palette for non-hook utility modules.
 export const colors = lightColors;

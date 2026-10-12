@@ -1,4 +1,5 @@
 import { ServiceUnavailableException } from "@nestjs/common";
+import { estimateTokens, recordUsage } from "../billing/usage-meter.js";
 import { fetchWithTimeout } from "../processing/fetch-with-timeout.js";
 
 export type OllamaConnection = {
@@ -65,11 +66,41 @@ export async function ollamaFetch(
       : process.env.OLLAMA_EMBED_TIMEOUT_MS,
     workload === "chat" ? 300_000 : 120_000,
   );
-  return fetchWithTimeout(`${connection.baseUrl}${path}`, {
+  const serialized = JSON.stringify(body);
+  const response = await fetchWithTimeout(`${connection.baseUrl}${path}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: serialized,
   }, timeoutMs);
+  if (workload === "chat" && response.ok) {
+    // Meter token usage for billing without consuming the caller's body.
+    // Awaited so the usage is on the meter before the job settles its charge.
+    try {
+      recordUsage(chatUsage(await response.clone().json(), serialized));
+    } catch {
+      recordUsage({ llmPromptTokens: estimateTokens(serialized) });
+    }
+  }
+  return response;
+}
+
+/** Token counts from an Ollama chat response, estimated when not reported. */
+export function chatUsage(payload: unknown, requestBody: string): { llmPromptTokens: number; llmOutputTokens: number } {
+  const value = (payload ?? {}) as {
+    prompt_eval_count?: number;
+    eval_count?: number;
+    message?: { content?: string; thinking?: string };
+    response?: string;
+  };
+  const output = `${value.message?.content ?? value.response ?? ""}${value.message?.thinking ?? ""}`;
+  return {
+    llmPromptTokens: Number.isFinite(value.prompt_eval_count) && value.prompt_eval_count! > 0
+      ? value.prompt_eval_count!
+      : estimateTokens(requestBody),
+    llmOutputTokens: Number.isFinite(value.eval_count) && value.eval_count! > 0
+      ? value.eval_count!
+      : estimateTokens(output),
+  };
 }
 
 export async function ollamaModels(

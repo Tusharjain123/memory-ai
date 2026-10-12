@@ -13,7 +13,14 @@ import {
 import { useNavigation, useRouter } from "expo-router";
 import { useSafeAudioRecorderState } from "../src/hooks/useSafeAudioRecorderState";
 import { createPendingRecording, setPendingRecordingError } from "../src/db/pendingRecordings";
+import type { ConversationCalendarEvent } from "../src/db/conversations";
+import { currentCalendarEvent } from "../src/services/googleWorkspace";
 import { startProcessing } from "../src/services/processing";
+import { InsufficientBalanceError, SignInRequiredError } from "../src/services/apiFetch";
+import { connectGoogle } from "../src/services/cloudAuth";
+import { BalanceGateSheet, type GateReason } from "../src/components/BalanceGateSheet";
+import { useAuthStore } from "../src/store/useAuthStore";
+import { useWalletStore } from "../src/store/useWalletStore";
 import { ensureProcessing } from "../src/services/processingOrchestrator";
 import { MAX_RECORDING_MS } from "../src/utils/processingTimeouts";
 import { persistRecording } from "../src/services/recordings";
@@ -107,7 +114,20 @@ export default function RecordScreen() {
   const pulse = useRef(new Animated.Value(0)).current;
   const allowExitRef = useRef(false);
   const startingRef = useRef(false);
+  const gateBypassRef = useRef(false);
+  const [gate, setGate] = useState<GateReason | null>(null);
+  const [gateBusy, setGateBusy] = useState(false);
+  const wallet = useWalletStore((state) => state.wallet);
   const [levels, setLevels] = useState(EMPTY_LEVELS);
+  // Calendar event happening now (when Google Calendar is connected); the user can unlink it.
+  const [calendarEvent, setCalendarEvent] = useState<ConversationCalendarEvent | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void currentCalendarEvent()
+      .then((event) => { if (!cancelled) setCalendarEvent(event); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   const [starting, setStarting] = useState(false);
   const [muffledHint, setMuffledHint] = useState(false);
   const [distantHint, setDistantHint] = useState(false);
@@ -189,10 +209,60 @@ export default function RecordScreen() {
     return () => animation.stop();
   }, [pulse, status]);
 
+  /**
+   * Before a conversation: AI processing needs an account and enough credit.
+   * Returns false (and opens the sheet) when the person should act first.
+   */
+  async function passesGate(): Promise<boolean> {
+    if (gateBypassRef.current) return true;
+    const cloud = useAuthStore.getState().status;
+    if (cloud === "unavailable" || cloud === "loading") return true;
+    if (cloud !== "signedIn") {
+      setGate("signin");
+      return false;
+    }
+    const wallet = await Promise.race([
+      useWalletStore.getState().refresh(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_500)),
+    ]);
+    // If the wallet can't be checked (offline), don't block recording.
+    if (wallet?.lowBalance) {
+      setGate("low");
+      return false;
+    }
+    return true;
+  }
+
+  async function onGatePrimary(): Promise<void> {
+    if (gate === "low") {
+      setGate(null);
+      router.push("/wallet" as never);
+      return;
+    }
+    setGateBusy(true);
+    try {
+      if (await connectGoogle()) {
+        setGate(null);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (cause) {
+      Alert.alert("Couldn't sign in", cause instanceof Error ? cause.message : "Please try again.");
+    } finally {
+      setGateBusy(false);
+    }
+  }
+
+  function recordAnyway(): void {
+    gateBypassRef.current = true;
+    setGate(null);
+    void start();
+  }
+
   async function start(): Promise<void> {
     if (startingRef.current || status === "recording" || status === "paused" || status === "processing") {
       return;
     }
+    if (!(await passesGate())) return;
     startingRef.current = true;
     setStarting(true);
     try {
@@ -283,11 +353,13 @@ export default function RecordScreen() {
       const pending = await createPendingRecording(
         savedUri,
         recordedDurationMsRef.current || undefined,
+        calendarEvent,
       );
       pendingId = pending.id;
       await startProcessing(savedUri, {
         durationMs: recordedDurationMsRef.current,
         pendingId: pending.id,
+        ...(calendarEvent?.attendees.length ? { attendees: calendarEvent.attendees } : {}),
         onProgress: setProcessingProgress,
       });
       void ensureProcessing(pending.id).catch(() => {
@@ -299,6 +371,13 @@ export default function RecordScreen() {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Could not process recording";
       if (pendingId) await setPendingRecordingError(pendingId, message);
+      if (pendingId && (cause instanceof InsufficientBalanceError || cause instanceof SignInRequiredError)) {
+        // The recording is saved; the Pending screen offers top-up / sign-in and a retry.
+        allowExitRef.current = true;
+        reset();
+        router.replace("/pending" as never);
+        return;
+      }
       setError(`${message}. Your recording is safe on this device.`);
     }
   }
@@ -345,6 +424,15 @@ export default function RecordScreen() {
               ? "Speak naturally. You can pause whenever you need."
               : "Capture a conversation without taking notes. Keep the phone nearby for clearer Hindi."}
         </Text>
+        {calendarEvent && !processing ? (
+          <View style={[styles.eventChip, { backgroundColor: colors.accentSoft }]}>
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text numberOfLines={1} style={[styles.eventChipText, { color: colors.accent }]}>Linked to: {calendarEvent.title}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Unlink calendar event" hitSlop={10} onPress={() => setCalendarEvent(null)}>
+              <Ionicons name="close" size={15} color={colors.accent} />
+            </Pressable>
+          </View>
+        ) : null}
         {!active && !processing ? (
           <Text style={[styles.coachTip, { color: colors.faint }]}>
             If several people talk at once, speaker labels may need a quick fix after.
@@ -518,11 +606,21 @@ export default function RecordScreen() {
           </View>
         ) : null}
       </View>
+      <BalanceGateSheet
+        reason={gate}
+        wallet={wallet}
+        busy={gateBusy}
+        onClose={() => setGate(null)}
+        onPrimary={() => void onGatePrimary()}
+        onRecordAnyway={recordAnyway}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  eventChip: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "center", maxWidth: "100%", borderRadius: radii.pill, paddingHorizontal: 12, paddingVertical: 6, marginTop: spacing.sm },
+  eventChipText: { flexShrink: 1, fontSize: 12, fontWeight: "800" },
   page: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
   topCopy: { alignItems: "center", paddingTop: spacing.xxl },
   title: { fontSize: typeScale.title1, lineHeight: 40, fontWeight: "800", letterSpacing: -1, textAlign: "center", marginTop: spacing.lg },

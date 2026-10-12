@@ -1,3 +1,4 @@
+import { speakerLabel } from "./speaker-label.js";
 import type { TranscriptSegment } from "../contracts.js";
 
 export type ClaimWithEvidence = {
@@ -98,7 +99,8 @@ export function attachEvidence<T extends ClaimWithEvidence>(
 export function formatUtteranceForUnderstanding(
   utterance: { startMs: number; endMs: number; speaker: number; text: string },
   index: number,
+  speakerNames?: readonly string[],
 ): string {
   const id = `segment-${index + 1}`;
-  return `[${id} | ${utterance.startMs}-${utterance.endMs}] Speaker ${utterance.speaker + 1}: ${utterance.text}`;
+  return `[${id} | ${utterance.startMs}-${utterance.endMs}] ${speakerLabel(utterance.speaker, speakerNames)}: ${utterance.text}`;
 }

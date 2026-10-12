@@ -48,9 +48,11 @@ function recentQuestionsFromTurns(turns: AskTurn[]): string[] {
 
 export default function AskMemoryScreen() {
   const router = useRouter();
-  const { question: routedQuestion, autoSubmit } = useLocalSearchParams<{
+  const { question: routedQuestion, autoSubmit, focus } = useLocalSearchParams<{
     question?: string;
     autoSubmit?: string;
+    /** "1" opens with the keyboard up (from Home's Ask field). */
+    focus?: string;
   }>();
   const { colors, isDark } = useAppTheme();
   const [question, setQuestion] = useState(routedQuestion ?? "");
@@ -317,6 +319,7 @@ export default function AskMemoryScreen() {
             onChangeText={setQuestion}
             onSubmitEditing={() => void ask()}
             returnKeyType="send"
+            autoFocus={focus === "1"}
             multiline
             maxLength={1000}
           />

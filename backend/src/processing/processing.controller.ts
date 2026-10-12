@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   Body,
+  HttpException,
   Controller,
   HttpCode,
   Post,
   Req,
 } from "@nestjs/common";
 import type { ProcessingJobState } from "../contracts";
+import { CurrentUser, RequireUser } from "../auth/auth.decorators.js";
+import type { AuthUser } from "../auth/supabase-jwt.js";
 import type { FastifyRequest } from "fastify";
 import { stat } from "node:fs/promises";
 import {
@@ -37,6 +40,12 @@ export function parseKeyterms(raw: unknown): string[] {
   } catch {
     return [];
   }
+}
+
+/** Calendar attendee names: same shape and limits as keyterms, at most 20. */
+export function parseAttendees(raw: unknown): string[] {
+  const value = typeof raw === "string" ? raw : raw == null ? "" : JSON.stringify(raw);
+  return parseKeyterms(value).slice(0, 20);
 }
 
 function parseDurationMs(body: unknown): number | undefined {
@@ -115,7 +124,9 @@ export async function saveUploadPartFromMultipart(
   return saved;
 }
 
+/** Processing spends wallet credit, so every route needs a signed-in account. */
 @Controller("v1/conversations")
+@RequireUser()
 export class ProcessingController {
   constructor(
     private readonly queue: ProcessingQueueService,
@@ -125,7 +136,7 @@ export class ProcessingController {
 
   @Post("process")
   @HttpCode(202)
-  async process(@Req() request: FastifyRequest): Promise<ProcessingJobState> {
+  async process(@Req() request: FastifyRequest, @CurrentUser() user: AuthUser): Promise<ProcessingJobState> {
     if (!request.isMultipart()) {
       throw new BadRequestException("multipart/form-data is required");
     }
@@ -134,6 +145,7 @@ export class ProcessingController {
     let mimetype = "";
     let truncated = false;
     let keytermsRaw = "";
+    let attendeesRaw = "";
     let durationMs: number | undefined;
 
     try {
@@ -152,6 +164,8 @@ export class ProcessingController {
           truncated = Boolean(part.file.truncated);
         } else if (part.fieldname === "keyterms") {
           keytermsRaw = String(part.value ?? "");
+        } else if (part.fieldname === "attendees") {
+          attendeesRaw = String(part.value ?? "");
         } else if (part.fieldname === "durationMs") {
           const parsed = Number(String(part.value ?? ""));
           if (Number.isFinite(parsed) && parsed > 0) durationMs = parsed;
@@ -184,6 +198,8 @@ export class ProcessingController {
       const probe = await probeAudio(stored.audioPath);
       if (probe.durationSec > 0) {
         assertWithinDurationLimit(probe.durationSec);
+        // The probed length is authoritative for the cost estimate.
+        durationMs = Math.round(probe.durationSec * 1000);
       } else if (durationMs) {
         assertWithinDurationLimit(durationMs / 1000);
       }
@@ -197,8 +213,9 @@ export class ProcessingController {
       ...stored,
       mimetype,
       keyterms: parseKeyterms(keytermsRaw),
+      attendees: parseAttendees(attendeesRaw),
       ...(durationMs != null ? { durationMs } : {}),
-    });
+    }, { userId: user.id });
     return { status: "queued", jobId };
   }
 
@@ -254,7 +271,7 @@ export class ProcessingController {
 
   @Post("process/upload/complete")
   @HttpCode(202)
-  async completeUpload(@Body() body: unknown): Promise<ProcessingJobState> {
+  async completeUpload(@Body() body: unknown, @CurrentUser() user: AuthUser): Promise<ProcessingJobState> {
     const uploadId =
       typeof body === "object" && body !== null && "uploadId" in body
         ? String(body.uploadId ?? "")
@@ -270,18 +287,21 @@ export class ProcessingController {
         directory: assembled.directory,
         mimetype: assembled.mimetype,
         keyterms: assembled.keyterms,
+        attendees: parseAttendees(
+          typeof body === "object" && body !== null && "attendees" in body ? body.attendees : "",
+        ),
         ...(assembled.durationMs != null ? { durationMs: assembled.durationMs } : {}),
-      });
+      }, { userId: user.id });
       return { status: "queued", jobId };
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
+      if (error instanceof HttpException) throw error;
       limitError(error);
     }
   }
 
   @Post("process/status")
   @HttpCode(200)
-  state(@Body() body: unknown): Promise<ProcessingJobState> {
+  async state(@Body() body: unknown, @CurrentUser() user: AuthUser): Promise<ProcessingJobState> {
     const jobId =
       typeof body === "object" && body !== null && "jobId" in body
         ? String(body.jobId)
@@ -289,6 +309,7 @@ export class ProcessingController {
     if (!isProcessingJobId(jobId)) {
       throw new BadRequestException("invalid processing job ID");
     }
+    await this.queue.assertOwner(jobId, user.id);
     return this.queue.state(jobId);
   }
 }

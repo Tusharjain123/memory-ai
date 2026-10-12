@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MIGRATION_5, MIGRATION_6, MIGRATION_7, MIGRATION_8, MIGRATION_9, SCHEMA_VERSION } from "./schema";
+import { MIGRATION_5, MIGRATION_6, MIGRATION_7, MIGRATION_8, MIGRATION_9, MIGRATION_10, MIGRATION_11, SCHEMA_VERSION } from "./schema";
 
 describe("people profile migration", () => {
   it("adds editable profile fields and stable speaker mappings", () => {
-    expect(SCHEMA_VERSION).toBe(9);
+    expect(SCHEMA_VERSION).toBe(11);
     expect(MIGRATION_5).toContain("ADD COLUMN relationship");
     expect(MIGRATION_5).toContain("ADD COLUMN email");
     expect(MIGRATION_5).toContain("ADD COLUMN phone");
@@ -49,5 +49,26 @@ describe("ask chat migration", () => {
     expect(MIGRATION_9).toContain("CREATE TABLE IF NOT EXISTS ask_turns");
     expect(MIGRATION_9).toContain("conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE");
     expect(MIGRATION_9).toContain("idx_ask_turns_global");
+  });
+});
+
+describe("folders migration", () => {
+  it("creates offline folders with sync tombstones and dirty flags", () => {
+    expect(MIGRATION_10).toContain("CREATE TABLE IF NOT EXISTS folders");
+    expect(MIGRATION_10).toContain("CREATE TABLE IF NOT EXISTS folder_recordings");
+    expect(MIGRATION_10).toContain("PRIMARY KEY (folder_id, conversation_id)");
+    expect(MIGRATION_10).toContain("WHERE deleted_at IS NULL");
+    expect(MIGRATION_10).toContain("dirty INTEGER NOT NULL DEFAULT 1");
+    expect(MIGRATION_10).toContain("CREATE TABLE IF NOT EXISTS sync_state");
+    expect(MIGRATION_10).not.toMatch(/REFERENCES conversations/);
+  });
+});
+
+describe("google meet migration", () => {
+  it("tracks source, meeting time, calendar event and dedupes imports", () => {
+    expect(MIGRATION_11).toContain("ADD COLUMN source TEXT NOT NULL DEFAULT 'recording'");
+    expect(MIGRATION_11).toContain("ADD COLUMN occurred_at TEXT");
+    expect(MIGRATION_11).toContain("ALTER TABLE pending_recordings ADD COLUMN calendar_event_json TEXT");
+    expect(MIGRATION_11).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_external_id\s+ON conversations\(external_id\) WHERE external_id IS NOT NULL/);
   });
 });

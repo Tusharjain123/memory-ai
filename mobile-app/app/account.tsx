@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useState } from "react";
 import { getUserProfile, type UserProfile } from "../src/db/profile";
+import { useAuthStore } from "../src/store/useAuthStore";
 import { useThemeStore, type ThemePreference } from "../src/store/useThemeStore";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
@@ -95,6 +96,10 @@ export default function AccountScreen() {
   const { colors, isDark, preference } = useAppTheme();
   const setPreference = useThemeStore((state) => state.setPreference);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const cloud = useAuthStore();
+  const cloudBody = cloud.status === "signedIn"
+    ? `${cloud.email ?? "Connected"} · cloud storage ${cloud.cloudSyncEnabled ? "on" : "off"}`
+    : "Optional: back up folders and use credits";
   useFocusEffect(useCallback(() => { void getUserProfile().then(setProfile); }, []));
 
   const detail = [profile?.email, profile?.phone].filter(Boolean).join(" · ") || "Optional details stored locally";
@@ -130,8 +135,37 @@ export default function AccountScreen() {
         ))}
       </SettingsGroup>
 
+      {cloud.status !== "unavailable" ? (
+        <SettingsGroup title="CLOUD">
+          <SettingsRow
+            icon="wallet-outline"
+            title="Wallet"
+            body={cloud.status === "signedIn" ? "Tokens, top-ups and usage" : "Sign in to get 5,000 free tokens"}
+            onPress={() => router.push("/wallet" as never)}
+          />
+          {cloud.status === "signedIn" ? (
+            <SettingsRow
+              icon="videocam-outline"
+              title="Google meetings"
+              body={cloud.calendarStatus === "connected"
+                ? "Import Google Meet transcripts as memories"
+                : "Connect Calendar & Meet to import transcripts"}
+              onPress={() => router.push("/calendar" as never)}
+            />
+          ) : null}
+          <SettingsRow
+            last
+            icon={cloud.status === "signedIn" ? "cloud-done-outline" : "logo-google"}
+            title={cloud.status === "signedIn" ? "Cloud & account" : "Connect Google for cloud sync"}
+            body={cloudBody}
+            onPress={() => router.push("/cloud" as never)}
+          />
+        </SettingsGroup>
+      ) : null}
+
       <SettingsGroup title="GENERAL">
         <SettingsRow icon="person-outline" title="Edit profile" body="Name, role, goals and contact details" onPress={() => router.push("/profile")} />
+        <SettingsRow icon="folder-outline" title="Folders" body="Group memories by project, person or topic" onPress={() => router.push("/folders" as never)} />
         <SettingsRow icon="people-outline" title="People" body="People remembered from your conversations" onPress={() => router.push("/people")} />
         <SettingsRow icon="shield-checkmark-outline" title="Privacy & security" body="Biometric lock and local-data controls" onPress={() => router.push("/settings")} />
         <SettingsRow last icon="archive-outline" title="Saved recordings" body="Continue recordings waiting to process" onPress={() => router.push("/pending")} />
@@ -144,7 +178,7 @@ export default function AccountScreen() {
         <SettingsRow last icon="information-circle-outline" title="About Memory AI" body="What Memory does and how it works" value={`v${Constants.expoConfig?.version ?? "0.1.0"}`} onPress={() => router.push("/about")} />
       </SettingsGroup>
 
-      <Text style={[styles.footer, { color: colors.faint }]}>Your profile is optional. Memory AI does not require an account.</Text>
+      <Text style={[styles.footer, { color: colors.faint }]}>Your profile is optional. Memory AI never requires an account; connecting Google only adds cloud features.</Text>
     </ScrollView>
   );
 }

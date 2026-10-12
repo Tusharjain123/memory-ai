@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { WalletModule } from "../wallet/wallet.module.js";
 import { DeepgramService } from "./deepgram.service.js";
 import { OllamaService } from "./ollama.service.js";
 import { ProcessingController } from "./processing.controller.js";
@@ -9,6 +10,7 @@ import { TempAudioService } from "./temp-audio.service.js";
 import { UploadSessionService } from "./upload-session.service.js";
 
 @Module({
+  imports: [WalletModule],
   controllers: [ProcessingController],
   providers: [
     ProcessingService,
@@ -19,5 +21,6 @@ import { UploadSessionService } from "./upload-session.service.js";
     DeepgramService,
     OllamaService,
   ],
+  exports: [ProcessingQueueService],
 })
 export class ProcessingModule {}

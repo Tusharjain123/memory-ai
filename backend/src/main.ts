@@ -12,6 +12,8 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: true, bodyLimit: 55 * 1024 * 1024 }),
+    // Payment webhooks are verified against the exact bytes Dodo signed.
+    { rawBody: true },
   );
   await app.register(multipart, {
     limits: { files: 1, fileSize: 55 * 1024 * 1024 },

@@ -1,5 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { randomUUID } from "expo-crypto";
+import { parseCalendarEvent, type ConversationCalendarEvent } from "./conversations";
 import { getDatabase } from "./database";
 
 export type PendingRecording = {
@@ -11,6 +12,7 @@ export type PendingRecording = {
   uploadPartIndex: number | null;
   processingJobId: string | null;
   durationMs: number | null;
+  calendarEvent: ConversationCalendarEvent | null;
 };
 
 type PendingRow = {
@@ -22,6 +24,7 @@ type PendingRow = {
   upload_part_index: number | null;
   processing_job_id: string | null;
   duration_ms: number | null;
+  calendar_event_json?: string | null;
 };
 
 function mapRow(row: PendingRow): PendingRecording {
@@ -34,12 +37,14 @@ function mapRow(row: PendingRow): PendingRecording {
     uploadPartIndex: row.upload_part_index,
     processingJobId: row.processing_job_id,
     durationMs: row.duration_ms,
+    calendarEvent: parseCalendarEvent(row.calendar_event_json),
   };
 }
 
 export async function createPendingRecording(
   recordingUri: string,
   durationMs?: number,
+  calendarEvent?: ConversationCalendarEvent | null,
 ): Promise<PendingRecording> {
   const database = await getDatabase();
   const item: PendingRecording = {
@@ -51,15 +56,18 @@ export async function createPendingRecording(
     uploadPartIndex: null,
     processingJobId: null,
     durationMs: durationMs ?? null,
+    calendarEvent: calendarEvent ?? null,
   };
   await database.runAsync(
     `INSERT INTO pending_recordings
-     (id,recording_uri,created_at,last_error,upload_id,upload_part_index,processing_job_id,duration_ms)
-     VALUES (?,?,?,NULL,NULL,NULL,NULL,?)`,
+     (id,recording_uri,created_at,last_error,upload_id,upload_part_index,processing_job_id,duration_ms,
+      calendar_event_json)
+     VALUES (?,?,?,NULL,NULL,NULL,NULL,?,?)`,
     item.id,
     item.recordingUri,
     item.createdAt,
     item.durationMs,
+    item.calendarEvent ? JSON.stringify(item.calendarEvent) : null,
   );
   return item;
 }

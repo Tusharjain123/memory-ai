@@ -1,7 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { dirname } from "node:path";
 import { readFile } from "node:fs/promises";
-import { splitAudioIntoChunks } from "./audio-chunk.js";
+import { splitAudioIntoChunks, type AudioChunk } from "./audio-chunk.js";
 import {
   computeDeepgramTimeoutMs,
   chunkConcurrency,
@@ -19,12 +19,12 @@ import {
 import {
   isWeakTranscript,
   maybeNormalizeQuietAudio,
-  type NormalizedAudio,
 } from "./audio-normalize.js";
 import {
   rebuildUtterancesFromWords,
   type DeepgramWord,
 } from "./diarization.js";
+import { recordUsage } from "../billing/usage-meter.js";
 
 export type DeepgramResult = {
   rawTranscript: string;
@@ -36,6 +36,10 @@ export type DeepgramResult = {
     endMs: number;
     text: string;
   }>;
+  /** Known name per speaker index (e.g. Google Meet participants). */
+  speakerNames?: string[];
+  /** Likely participants (e.g. calendar attendees) without a known speaker mapping. */
+  speakerHints?: string[];
 };
 
 export type TranscribeOptions = {
@@ -86,6 +90,8 @@ export type DeepgramPayload = {
 type ChunkPayload = {
   payload: DeepgramPayload;
   offsetSec: number;
+  /** Language requested for this chunk; used when Deepgram reports none. */
+  language: string;
 };
 
 @Injectable()
@@ -134,9 +140,10 @@ export class DeepgramService {
     const config = resolveDeepgramConfig();
     const keyterms = options.keyterms ?? [];
 
-    let primary: DeepgramResult;
+    let chunkPayloads: ChunkPayload[];
+    let chunks: AudioChunk[];
     try {
-      const chunks = await splitAudioIntoChunks(
+      chunks = await splitAudioIntoChunks(
         normalized.path,
         directory,
         normalized.probe,
@@ -151,7 +158,7 @@ export class DeepgramService {
           `Transcribing ${chunks.length} chunks (${Math.round(durationSec / 60)}m audio)`,
         );
       }
-      const chunkPayloads = await this.transcribeChunks(
+      chunkPayloads = await this.transcribeChunks(
         apiKey,
         chunks,
         normalized.mimetype,
@@ -160,69 +167,78 @@ export class DeepgramService {
         keyterms,
         options.onProgress,
       );
-      primary = chunkPayloads.length > 1
-        ? mergeChunkPayloads(chunkPayloads, config.language, durationMs)
-        : mapDeepgramPayload(chunkPayloads[0]!.payload, config.language);
     } catch (error) {
       throw wrapStageError("Transcription", error, durationSec);
     }
 
-    if (
-      config.language === "multi"
-      && isWeakTranscript(primary.rawTranscript, primary.durationMs || durationMs)
-    ) {
-      this.logger.warn("Primary multilingual transcript looked weak; retrying with language=hi");
+    if (config.language === "multi") {
       try {
-        const hindi = await this.transcribeWithLanguage(
+        chunkPayloads = await this.retryWeakChunksInHindi(
           apiKey,
-          normalized,
-          directory,
-          "hi",
+          chunks,
+          chunkPayloads,
+          normalized.mimetype,
           config.model,
           keyterms,
-          durationSec,
-          durationMs,
         );
-        const winner = pickBetterTranscript(primary, hindi);
-        this.logger.log(
-          `Chose ${winner === hindi ? "hi" : "multi"} Deepgram pass (${winner.rawTranscript.length} chars, ${winner.utterances.length} turns)`,
-        );
-        return winner;
       } catch (error) {
         throw wrapStageError("Transcription (Hindi retry)", error, durationSec);
       }
     }
 
-    return primary;
+    return chunkPayloads.length > 1
+      ? mergeChunkPayloads(chunkPayloads, config.language, durationMs)
+      : mapDeepgramPayload(chunkPayloads[0]!.payload, chunkPayloads[0]!.language);
   }
 
-  private async transcribeWithLanguage(
+  /**
+   * Re-run only the chunks whose multilingual pass looked weak, in parallel,
+   * and keep whichever pass is denser per chunk.
+   */
+  private async retryWeakChunksInHindi(
     apiKey: string,
-    normalized: NormalizedAudio,
-    directory: string,
-    language: string,
+    chunks: AudioChunk[],
+    primary: ChunkPayload[],
+    mimetype: string,
     model: string,
     keyterms: string[],
-    durationSec: number,
-    durationMs: number,
-  ): Promise<DeepgramResult> {
-    const chunks = await splitAudioIntoChunks(
-      normalized.path,
-      directory,
-      normalized.probe,
-      durationSec,
+  ): Promise<ChunkPayload[]> {
+    const weakIndexes = primary
+      .map((chunk, index) => ({ chunk, index }))
+      .filter(({ chunk, index }) => {
+        const mapped = mapDeepgramPayload(chunk.payload, chunk.language);
+        return isWeakTranscript(
+          mapped.rawTranscript,
+          mapped.durationMs || Math.round((chunks[index]?.durationSec ?? 0) * 1000),
+        );
+      })
+      .map(({ index }) => index);
+    if (!weakIndexes.length) return primary;
+
+    this.logger.warn(
+      `${weakIndexes.length}/${primary.length} multilingual chunk(s) looked weak; retrying with language=hi`,
     );
-    const chunkPayloads = await this.transcribeChunks(
+    const retried = await this.transcribeChunks(
       apiKey,
-      chunks,
-      normalized.mimetype,
-      language,
+      weakIndexes.map((index) => chunks[index]!),
+      mimetype,
+      "hi",
       model,
       keyterms,
     );
-    return chunkPayloads.length > 1
-      ? mergeChunkPayloads(chunkPayloads, language, durationMs)
-      : mapDeepgramPayload(chunkPayloads[0]!.payload, language);
+    const next = [...primary];
+    weakIndexes.forEach((chunkIndex, retryIndex) => {
+      const original = primary[chunkIndex]!;
+      const hindi = retried[retryIndex]!;
+      const originalResult = mapDeepgramPayload(original.payload, original.language);
+      const hindiResult = mapDeepgramPayload(hindi.payload, hindi.language);
+      next[chunkIndex] = pickBetterTranscript(originalResult, hindiResult) === hindiResult
+        ? hindi
+        : original;
+    });
+    const switched = weakIndexes.filter((index) => next[index] !== primary[index]).length;
+    this.logger.log(`Chose language=hi for ${switched}/${weakIndexes.length} retried chunk(s)`);
+    return next;
   }
 
   private async fetchPayload(
@@ -271,7 +287,10 @@ export class DeepgramService {
       }
 
       if (response.ok) {
-        return (await response.json()) as DeepgramPayload;
+        const payload = (await response.json()) as DeepgramPayload;
+        // Deepgram bills per request on the audio it received, retries included.
+        recordUsage({ audioSec: payload.metadata?.duration || durationSec });
+        return payload;
       }
       const detail = (await response.text()).trim().slice(0, 300);
       lastFailure = new ServiceUnavailableException(
@@ -318,7 +337,7 @@ export class DeepgramService {
           keyterms,
           chunk.durationSec,
         );
-        results[index] = { payload, offsetSec: chunk.offsetSec };
+        results[index] = { payload, offsetSec: chunk.offsetSec, language };
         completed += 1;
         await onProgress?.(completed, total);
       }
@@ -358,8 +377,10 @@ export function mergeChunkPayloads(
   for (const chunk of chunks) {
     const channel = chunk.payload.results?.channels?.[0];
     const alternative = channel?.alternatives?.[0];
-    for (const code of alternative?.languages ?? []) {
-      if (code.trim()) languages.add(code.trim());
+    const detected = (alternative?.languages ?? []).map((code) => code.trim()).filter(Boolean);
+    for (const code of detected) languages.add(code);
+    if (!detected.length && chunk.language && chunk.language !== "multi") {
+      languages.add(chunk.language);
     }
     for (const word of alternative?.words ?? []) {
       mergedWords.push({

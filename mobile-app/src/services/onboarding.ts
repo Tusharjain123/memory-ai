@@ -23,3 +23,21 @@ export async function shouldShowOnboarding(): Promise<boolean> {
 export async function completeOnboarding(): Promise<void> {
   await SecureStore.setItemAsync(ONBOARDING_KEY, "true");
 }
+
+const CHECKLIST_DISMISSED_KEY = "memory-ai.getting-started-dismissed.v1";
+const FIRST_MEMORY_CELEBRATED_KEY = "memory-ai.first-memory-celebrated.v1";
+
+export async function isChecklistDismissed(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(CHECKLIST_DISMISSED_KEY)) === "true";
+}
+
+export async function dismissChecklist(): Promise<void> {
+  await SecureStore.setItemAsync(CHECKLIST_DISMISSED_KEY, "true");
+}
+
+/** True exactly once: the first time it's asked after a first memory exists. */
+export async function claimFirstMemoryCelebration(): Promise<boolean> {
+  if (await SecureStore.getItemAsync(FIRST_MEMORY_CELEBRATED_KEY)) return false;
+  await SecureStore.setItemAsync(FIRST_MEMORY_CELEBRATED_KEY, "true");
+  return true;
+}

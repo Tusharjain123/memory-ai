@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseChatJson, parseStructuredChatJson } from "../src/ollama/parse-model-json.js";
-import { understandingSchema } from "../src/processing/result.schema.js";
+import { insightsSchema } from "../src/processing/result.schema.js";
 
 const memory = {
   title: "Launch",
@@ -12,18 +12,7 @@ const understanding = {
   mainGoal: "Plan today's deployment",
   summary: "Rahul will complete deployment today.",
   topics: ["deployment"],
-  cleanTranscript: "We will deploy today.",
-  romanHinglishTranscript: "Aaj deploy karenge.",
   participants: [{ name: "Rahul", speakerLabel: "Speaker 1" }],
-  segments: [{
-    id: "segment-1",
-    speakerLabel: "Speaker 1",
-    startMs: 0,
-    endMs: 2_000,
-    rawText: "Aaj deploy karenge.",
-    cleanText: "We will deploy today.",
-    romanHinglishText: "Aaj deploy karenge.",
-  }],
   decisions: [],
   commitments: [],
   memoryCandidates: [],
@@ -64,7 +53,7 @@ describe("parseChatJson", () => {
   it("chooses the object that matches the schema when a larger blob is also JSON", () => {
     const decoy = { echoedSchema: "x".repeat(4_000), required: ["title"] };
     const content = `${JSON.stringify(decoy)}\n${JSON.stringify(understanding)}`;
-    expect(parseStructuredChatJson({ content }, understandingSchema)).toEqual(understanding);
+    expect(parseStructuredChatJson({ content }, insightsSchema)).toEqual(understanding);
   });
 
   it("rejects text that contains no JSON value", () => {

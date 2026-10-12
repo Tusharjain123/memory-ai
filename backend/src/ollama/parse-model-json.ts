@@ -3,7 +3,7 @@ type ChatMessage = {
   thinking?: string;
 };
 
-type JsonSchema<T> = {
+export type JsonSchema<T> = {
   safeParse(value: unknown): { success: true; data: T } | { success: false };
 };
 

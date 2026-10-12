@@ -8,7 +8,45 @@ import type {
 import * as FileSystem from "expo-file-system/legacy";
 import { randomUUID } from "expo-crypto";
 import { getDatabase } from "./database";
+import { removeConversationFromFolders } from "./folders";
 import { storedEntityId } from "./storageIds";
+
+/** Calendar event a conversation belongs to (Google Meet import or a linked recording). */
+export type ConversationCalendarEvent = {
+  eventId: string;
+  title: string;
+  start: string;
+  end: string;
+  attendees: string[];
+};
+
+export type ConversationSource = "recording" | "google_meet";
+
+export type SaveConversationMeta = {
+  source?: ConversationSource;
+  /** Dedupe key, e.g. "google_meet:<eventId>"; a second save returns the existing id. */
+  externalId?: string;
+  /** When the conversation actually happened, if not now. */
+  occurredAt?: string;
+  calendarEvent?: ConversationCalendarEvent | null;
+};
+
+export function parseCalendarEvent(json: string | null | undefined): ConversationCalendarEvent | null {
+  if (!json) return null;
+  try {
+    const value = JSON.parse(json) as Partial<ConversationCalendarEvent>;
+    if (typeof value.eventId !== "string" || typeof value.title !== "string") return null;
+    return {
+      eventId: value.eventId,
+      title: value.title,
+      start: String(value.start ?? ""),
+      end: String(value.end ?? ""),
+      attendees: Array.isArray(value.attendees) ? value.attendees.filter((name): name is string => typeof name === "string") : [],
+    };
+  } catch {
+    return null;
+  }
+}
 
 export type ConversationListItem = {
   id: string;
@@ -16,7 +54,9 @@ export type ConversationListItem = {
   summary: string;
   topics: string[];
   durationMs: number;
+  /** When the conversation happened: the meeting time for imports, else when it was saved. */
   createdAt: string;
+  source: ConversationSource;
   people: string[];
   actionItemCount: number;
   commitmentCount: number;
@@ -54,6 +94,7 @@ export type ConversationCommitment = {
 };
 
 export type ConversationDetail = ConversationListItem & {
+  calendarEvent: ConversationCalendarEvent | null;
   mainGoal: string;
   language: string;
   rawTranscript: string;
@@ -164,8 +205,16 @@ export async function saveConversation(
   result: ProcessedConversation,
   recordingUri: string | null,
   pendingRecordingId?: string,
+  meta: SaveConversationMeta = {},
 ): Promise<string> {
   const database = await getDatabase();
+  if (meta.externalId) {
+    const existing = await database.getFirstAsync<{ id: string }>(
+      "SELECT id FROM conversations WHERE external_id=?",
+      meta.externalId,
+    );
+    if (existing) return existing.id;
+  }
   const id = randomUUID();
   const now = new Date().toISOString();
   const commitments = normalizeCommitments(result);
@@ -177,11 +226,14 @@ export async function saveConversation(
     await database.runAsync(
       `INSERT INTO conversations
        (id,title,main_goal,summary,topics_json,language,duration_ms,raw_transcript,
-        clean_transcript,roman_hinglish_transcript,recording_uri,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        clean_transcript,roman_hinglish_transcript,recording_uri,created_at,updated_at,
+        source,external_id,occurred_at,calendar_event_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       id, result.title, result.mainGoal, result.summary, JSON.stringify(result.topics),
       result.language, result.durationMs, result.rawTranscript, result.cleanTranscript,
       result.romanHinglishTranscript, recordingUri, now, now,
+      meta.source ?? "recording", meta.externalId ?? null, meta.occurredAt ?? null,
+      meta.calendarEvent ? JSON.stringify(meta.calendarEvent) : null,
     );
     const speakerLabels = new Set([
       ...result.segments.map((segment) => segment.speakerLabel),
@@ -392,11 +444,12 @@ export async function listConversations(): Promise<ConversationListItem[]> {
   const database = await getDatabase();
   const rows = await database.getAllAsync<{
     id: string; title: string; summary: string; topics_json: string;
-    duration_ms: number; created_at: string; people_names: string | null;
+    duration_ms: number; created_at: string; source: string | null; people_names: string | null;
     action_count: number; commitment_count: number; decision_count: number;
     pending_review_count: number;
   }>(
-    `SELECT c.id,c.title,c.summary,c.topics_json,c.duration_ms,c.created_at,
+    `SELECT c.id,c.title,c.summary,c.topics_json,c.duration_ms,
+      COALESCE(c.occurred_at,c.created_at) created_at,c.source,
       (SELECT GROUP_CONCAT(
          CASE WHEN p.is_placeholder=1 THEN cp.speaker_label ELSE p.name END, '|'
        ) FROM conversation_people cp
@@ -409,12 +462,13 @@ export async function listConversations(): Promise<ConversationListItem[]> {
       (SELECT COUNT(*) FROM decisions d WHERE d.conversation_id=c.id) decision_count,
       (SELECT COALESCE(pending_count,0) FROM memory_reviews mr
         WHERE mr.conversation_id=c.id AND mr.completed_at IS NULL) pending_review_count
-     FROM conversations c ORDER BY c.created_at DESC`,
+     FROM conversations c ORDER BY COALESCE(c.occurred_at,c.created_at) DESC`,
   );
   return rows.map((row) => ({
     id: row.id, title: row.title, summary: row.summary,
     topics: JSON.parse(row.topics_json) as string[],
     durationMs: row.duration_ms, createdAt: row.created_at,
+    source: row.source === "google_meet" ? "google_meet" : "recording",
     people: row.people_names?.split("|").filter(Boolean) ?? [],
     actionItemCount: row.action_count,
     commitmentCount: row.commitment_count,
@@ -429,6 +483,7 @@ export async function deleteConversation(id: string): Promise<void> {
     "SELECT recording_uri FROM conversations WHERE id=?", id,
   );
   await database.runAsync("DELETE FROM conversations WHERE id=?", id);
+  await removeConversationFromFolders(id);
   if (row?.recording_uri) {
     await FileSystem.deleteAsync(row.recording_uri, { idempotent: true });
   }
@@ -515,7 +570,8 @@ export async function getConversation(id: string): Promise<ConversationDetail | 
     id: string; title: string; main_goal: string; summary: string; topics_json: string;
     language: string; duration_ms: number; raw_transcript: string;
     clean_transcript: string; roman_hinglish_transcript: string; created_at: string;
-    recording_uri: string | null;
+    recording_uri: string | null; source: string | null; occurred_at: string | null;
+    calendar_event_json: string | null;
   }>("SELECT * FROM conversations WHERE id=?", id);
   if (!row) return null;
   const [participants, segments, decisions, commitments, review] = await Promise.all([
@@ -615,7 +671,10 @@ export async function getConversation(id: string): Promise<ConversationDetail | 
     topics: JSON.parse(row.topics_json) as string[], language: row.language,
     durationMs: row.duration_ms, rawTranscript: row.raw_transcript,
     cleanTranscript: row.clean_transcript,
-    romanHinglishTranscript: row.roman_hinglish_transcript, createdAt: row.created_at,
+    romanHinglishTranscript: row.roman_hinglish_transcript,
+    createdAt: row.occurred_at ?? row.created_at,
+    source: row.source === "google_meet" ? "google_meet" : "recording",
+    calendarEvent: parseCalendarEvent(row.calendar_event_json),
     recordingUri: row.recording_uri,
     people: participants.map((item) =>
       item.is_placeholder ? item.speaker_label : item.name
@@ -667,4 +726,14 @@ export async function getConversation(id: string): Promise<ConversationDetail | 
       completed: item.status === "completed",
     })),
   };
+}
+
+/** External ids already imported (e.g. "google_meet:<eventId>") mapped to conversation ids. */
+export async function getImportedConversationIds(prefix: string): Promise<Map<string, string>> {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<{ id: string; external_id: string }>(
+    "SELECT id, external_id FROM conversations WHERE external_id LIKE ?",
+    `${prefix}%`,
+  );
+  return new Map(rows.map((row) => [row.external_id, row.id]));
 }

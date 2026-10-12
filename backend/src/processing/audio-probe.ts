@@ -151,9 +151,10 @@ export function chunkSizeSec(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
 }
 
+/** Parallel Deepgram requests per recording; chunks no longer run one by one. */
 export function chunkConcurrency(): number {
   const parsed = Number(process.env.DEEPGRAM_CHUNK_CONCURRENCY);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 4) : 1;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 8) : 4;
 }
 
 export function shouldChunkAudio(durationSec: number): boolean {

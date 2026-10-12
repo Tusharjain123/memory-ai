@@ -19,6 +19,10 @@ vi.mock("expo-file-system/legacy", () => ({
 }));
 
 vi.mock("../db/profile", () => ({ getUserProfile: vi.fn().mockResolvedValue(null) }));
+vi.mock("./apiFetch", () => ({
+  authHeaders: vi.fn().mockResolvedValue({ Authorization: "Bearer test" }),
+  readApiError: vi.fn(async (response: Response, fallback: string) => new Error(`${fallback} (${response.status})`)),
+}));
 vi.mock("../db/insights", () => ({ listPeople: vi.fn().mockResolvedValue([]) }));
 vi.mock("../db/pendingRecordings", () => ({
   getPendingRecording: vi.fn(),
@@ -174,6 +178,7 @@ describe("failed-job continue", () => {
       uploadPartIndex: 3,
       processingJobId: "job-old",
       durationMs: 3_600_000,
+      calendarEvent: null,
     });
     getInfoAsync.mockResolvedValue({ exists: true, size: 1_024 });
 
@@ -241,6 +246,7 @@ describe("failed-job continue", () => {
       uploadPartIndex: 3,
       processingJobId: "job-live",
       durationMs: 4_200_000,
+      calendarEvent: null,
     });
 
     const completeResult = {

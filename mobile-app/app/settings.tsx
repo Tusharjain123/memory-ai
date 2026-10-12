@@ -2,12 +2,16 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { useAuthStore } from "../src/store/useAuthStore";
 import { deleteAllData, isBiometricLockEnabled, setBiometricLockEnabled } from "../src/services/privacy";
 import { SectionHeader } from "../src/components/ui";
 import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
 
 export default function PrivacyScreen() {
   const { colors, isDark } = useAppTheme();
+  const router = useRouter();
+  const cloud = useAuthStore();
   const [lockEnabled, setLockEnabled] = useState(false);
   const [deleting, setDeleting] = useState(false);
   useEffect(() => { void isBiometricLockEnabled().then(setLockEnabled); }, []);
@@ -49,7 +53,7 @@ export default function PrivacyScreen() {
           <Ionicons name="shield-checkmark" size={34} color={colors.sage} />
         </View>
         <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>Private by design</Text>
-        <Text style={[styles.intro, { color: colors.muted }]}>Your conversation history belongs to you—not an account, not a cloud database.</Text>
+        <Text style={[styles.intro, { color: colors.muted }]}>Your conversation history lives on this device. Cloud storage is optional and stays off unless you connect Google and turn it on.</Text>
       </View>
 
       <SectionHeader title="Protection" />
@@ -69,6 +73,27 @@ export default function PrivacyScreen() {
           thumbColor={colors.surfaceElevated}
         />
       </View>
+
+      {cloud.status !== "unavailable" ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push("/cloud" as never)}
+          style={({ pressed }) => [styles.settingCard, styles.cloudCard, { backgroundColor: colors.surface }, !isDark && shadows.card, pressed && { opacity: 0.7 }]}
+        >
+          <View style={[styles.settingIcon, { backgroundColor: colors.accentSoft }]}>
+            <Ionicons name={cloud.status === "signedIn" ? "cloud-done-outline" : "cloud-outline"} size={23} color={colors.accent} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={[styles.settingTitle, { color: colors.ink }]}>Store my data in the cloud</Text>
+            <Text style={[styles.settingBody, { color: colors.muted }]}>
+              {cloud.status !== "signedIn"
+                ? "Off. Connect Google first if you want a cloud backup."
+                : cloud.cloudSyncEnabled ? "On: folders and profile details back up to your account." : "Off: your data stays on this device."}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+        </Pressable>
+      ) : null}
 
       <SectionHeader title="How your data moves" />
       <View style={[styles.flowCard, { backgroundColor: colors.surface }, !isDark && shadows.card]}>
@@ -111,7 +136,7 @@ export default function PrivacyScreen() {
         <Ionicons name="trash-outline" size={19} color={colors.danger} />
         <Text style={[styles.deleteText, { color: colors.danger }]}>{deleting ? "Deleting…" : "Delete all local data"}</Text>
       </Pressable>
-      <Text style={[styles.footer, { color: colors.faint }]}>Memory AI · No cloud conversation database</Text>
+      <Text style={[styles.footer, { color: colors.faint }]}>Memory AI · On-device by default · Recordings and transcripts never sync</Text>
     </ScrollView>
   );
 }
@@ -122,6 +147,7 @@ const styles = StyleSheet.create({
   shield: { width: 76, height: 76, borderRadius: 27, alignItems: "center", justifyContent: "center" },
   heading: { fontSize: typeScale.title1, fontWeight: "800", letterSpacing: -1, marginTop: spacing.lg },
   intro: { maxWidth: 340, fontSize: typeScale.body, lineHeight: 22, textAlign: "center", marginTop: spacing.xs, marginBottom: spacing.md },
+  cloudCard: { marginTop: spacing.sm },
   settingCard: { minHeight: 96, borderRadius: radii.lg, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md },
   settingIcon: { width: 48, height: 48, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   settingCopy: { flex: 1 },

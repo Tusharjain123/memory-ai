@@ -1,10 +1,11 @@
 import type { TranscriptSegment } from "../contracts";
 import type { DeepgramResult } from "./deepgram.service.js";
-import type { Understanding } from "./result.schema.js";
+import type { SegmentPolish } from "./result.schema.js";
+import { speakerLabel } from "./speaker-label.js";
 
 export function authoritativeSegments(
   transcript: DeepgramResult,
-  understanding: Understanding,
+  polished: SegmentPolish[] = [],
 ): TranscriptSegment[] {
   const source = transcript.utterances.length
     ? transcript.utterances
@@ -16,12 +17,14 @@ export function authoritativeSegments(
           text: transcript.rawTranscript,
         }]
       : [];
+  const polishById = new Map(polished.map((item) => [item.id.trim(), item]));
 
   return source.map((utterance, index) => {
-    const enriched = understanding.segments[index];
+    const id = `segment-${index + 1}`;
+    const enriched = polishById.get(id);
     return {
-      id: `segment-${index + 1}`,
-      speakerLabel: `Speaker ${utterance.speaker + 1}`,
+      id,
+      speakerLabel: speakerLabel(utterance.speaker, transcript.speakerNames),
       startMs: utterance.startMs,
       endMs: utterance.endMs,
       rawText: utterance.text,

@@ -1,4 +1,5 @@
 import { AppState, type AppStateStatus } from "react-native";
+import type { ProcessingPreview } from "../contracts";
 import {
   getPendingRecording,
   listPendingRecordings,
@@ -14,6 +15,7 @@ export type ProcessingJobSnapshot = {
   progress: number | null;
   conversationId: string | null;
   error: string | null;
+  preview: ProcessingPreview | null;
 };
 
 type Listener = (snapshot: ProcessingJobSnapshot) => void;
@@ -44,6 +46,7 @@ function patch(
     progress: null,
     conversationId: null,
     error: null,
+    preview: null,
   };
   const next = { ...current, ...update, pendingId };
   emit(next);
@@ -80,11 +83,20 @@ async function runPending(item: PendingRecording): Promise<string> {
       ...(item.durationMs != null ? { durationMs: item.durationMs } : {}),
       resumeUploadId: item.uploadId,
       startPartIndex: item.uploadPartIndex ?? 0,
+      ...(item.calendarEvent?.attendees.length ? { attendees: item.calendarEvent.attendees } : {}),
       onProgress: (progress) => {
         patch(item.id, { status: "running", progress });
       },
+      onPreview: (preview) => {
+        patch(item.id, { status: "running", preview });
+      },
     });
-    const conversationId = await saveConversation(result, item.recordingUri, item.id);
+    const conversationId = await saveConversation(
+      result,
+      item.recordingUri,
+      item.id,
+      item.calendarEvent ? { calendarEvent: item.calendarEvent } : {},
+    );
     patch(item.id, {
       status: "complete",
       progress: 100,
@@ -104,6 +116,7 @@ async function runPending(item: PendingRecording): Promise<string> {
       progress: null,
       conversationId: null,
       error: message,
+      preview: null,
     });
     setTimeout(() => {
       snapshots.delete(item.id);

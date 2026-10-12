@@ -1,3 +1,4 @@
+import { speakerLabel } from "./speaker-label.js";
 import type { DeepgramResult } from "./deepgram.service.js";
 
 const LONG_UTTERANCE_THRESHOLD = 200;
@@ -85,6 +86,7 @@ export function prepareUnderstandingUtterances(
 
 export function segmentsFromRawUtterances(
   utterances: DeepgramResult["utterances"],
+  speakerNames?: readonly string[],
 ): Array<{
   id: string;
   speakerLabel: string;
@@ -96,7 +98,7 @@ export function segmentsFromRawUtterances(
 }> {
   return utterances.map((utterance, index) => ({
     id: `segment-${index + 1}`,
-    speakerLabel: `Speaker ${utterance.speaker + 1}`,
+    speakerLabel: speakerLabel(utterance.speaker, speakerNames),
     startMs: utterance.startMs,
     endMs: utterance.endMs,
     rawText: utterance.text,

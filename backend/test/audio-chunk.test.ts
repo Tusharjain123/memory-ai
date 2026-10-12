@@ -30,6 +30,7 @@ describe("mergeChunkPayloads", () => {
     const merged = mergeChunkPayloads([
       {
         offsetSec: 0,
+        language: "multi",
         payload: {
           metadata: { duration: 900 },
           results: {
@@ -46,6 +47,7 @@ describe("mergeChunkPayloads", () => {
       },
       {
         offsetSec: 900,
+        language: "multi",
         payload: {
           metadata: { duration: 900 },
           results: {

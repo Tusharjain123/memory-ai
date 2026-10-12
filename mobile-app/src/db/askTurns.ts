@@ -105,3 +105,10 @@ export async function clearAskTurns(conversationId?: string | null): Promise<voi
   }
   await database.runAsync("DELETE FROM ask_turns WHERE conversation_id IS NULL");
 }
+
+/** Every question ever asked, across Home and per-memory chats. */
+export async function countAskTurns(): Promise<number> {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<{ total: number }>("SELECT COUNT(*) total FROM ask_turns");
+  return row?.total ?? 0;
+}

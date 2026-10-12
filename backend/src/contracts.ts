@@ -100,9 +100,16 @@ export type ProcessedConversation = {
   embeddings: EmbeddingInsight[];
 };
 
+/** Early, partial result shown while a job is still processing. */
+export type ProcessingPreview = {
+  transcript: string;
+  title?: string;
+  summary?: string;
+};
+
 export type ProcessingJobState =
   | { status: "queued"; jobId: string }
-  | { status: "processing"; jobId: string; progress: number }
+  | { status: "processing"; jobId: string; progress: number; preview?: ProcessingPreview }
   | { status: "complete"; jobId: string; result: ProcessedConversation }
   | { status: "failed"; jobId: string; error: string };
 
@@ -120,4 +127,45 @@ export type AskRequest = {
 export type AskResponse = {
   answer: string;
   citations: string[];
+};
+
+export type GoogleConnectionStatus = {
+  connected: boolean;
+  email: string | null;
+  /** "expired" means Google revoked the refresh token; reconnect to continue. */
+  status: "active" | "expired" | "revoked" | "disconnected";
+};
+
+export type GoogleTranscriptStatus =
+  | "upcoming"
+  | "available"
+  | "processing"
+  | "expired"
+  | "none";
+
+export type GoogleAttendeeResponse = "accepted" | "declined" | "tentative" | "needsAction";
+
+export type GoogleMeetingAttendee = {
+  name: string | null;
+  email: string | null;
+  self: boolean;
+  organizer: boolean;
+  response: GoogleAttendeeResponse;
+};
+
+export type GoogleMeeting = {
+  eventId: string;
+  title: string;
+  start: string;
+  end: string;
+  meetCode: string | null;
+  htmlLink: string | null;
+  /** Plain-text event description (HTML stripped, trimmed). */
+  description: string | null;
+  location: string | null;
+  organizer: { name: string | null; email: string | null; self: boolean } | null;
+  attendees: GoogleMeetingAttendee[];
+  transcriptStatus: GoogleTranscriptStatus;
+  /** Google Docs copy of the transcript, when Meet saved one. */
+  docUrl: string | null;
 };

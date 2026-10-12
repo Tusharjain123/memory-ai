@@ -188,3 +188,43 @@ function nullable(value: string): string | null {
   const trimmed = value.trim();
   return trimmed || null;
 }
+
+export type KnownPerson = {
+  id: string;
+  name: string;
+  lastInteractionAt: string;
+  conversationCount: number;
+};
+
+/** Named people already in Memory that match meeting attendees (by email or exact name). */
+export async function findKnownPeople(attendees: Array<{ name: string | null; email: string | null }>): Promise<KnownPerson[]> {
+  const emails = attendees.map((person) => (person.email ?? "").trim().toLowerCase()).filter(Boolean);
+  const names = attendees.map((person) => (person.name ?? "").trim().toLowerCase()).filter(Boolean);
+  if (!emails.length && !names.length) return [];
+  const database = await getDatabase();
+  const params = [...emails, ...names];
+  const emailClause = emails.length ? `lower(p.email) IN (${emails.map(() => "?").join(",")})` : "0";
+  const nameClause = names.length ? `lower(p.name) IN (${names.map(() => "?").join(",")})` : "0";
+  const rows = await database.getAllAsync<{ id: string; name: string; last_interaction_at: string; conversation_count: number }>(
+    `SELECT p.id,p.name,p.last_interaction_at,COUNT(cp.conversation_id) conversation_count
+     FROM people p
+     LEFT JOIN conversation_people cp ON cp.person_id=p.id
+     WHERE p.is_placeholder=0 AND (${emailClause} OR ${nameClause})
+     GROUP BY p.id
+     ORDER BY p.last_interaction_at DESC`,
+    ...params,
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    lastInteractionAt: row.last_interaction_at,
+    conversationCount: row.conversation_count,
+  }));
+}
+
+/** Count of named (non-placeholder) people. */
+export async function countKnownPeople(): Promise<number> {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<{ total: number }>("SELECT COUNT(*) total FROM people WHERE is_placeholder=0");
+  return row?.total ?? 0;
+}

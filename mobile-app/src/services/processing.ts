@@ -1,6 +1,7 @@
 import type {
   ProcessedConversation,
   ProcessingJobState,
+  ProcessingPreview,
 } from "../contracts";
 import { API_URL } from "../config/api";
 import { listPeople } from "../db/insights";
@@ -18,11 +19,16 @@ import {
   getPendingRecording,
   updatePendingUploadState,
 } from "../db/pendingRecordings";
+import { authHeaders, readApiError } from "./apiFetch";
 
 export type ProcessRecordingOptions = {
   durationMs?: number;
   onProgress?: (progress: number) => void;
+  /** Transcript, then title + summary, as soon as the backend has them. */
+  onPreview?: (preview: ProcessingPreview) => void;
   pendingId?: string;
+  /** Calendar attendee names for the recording, used as transcription hints. */
+  attendees?: string[];
   resumeUploadId?: string | null;
   startPartIndex?: number;
 };
@@ -116,7 +122,7 @@ export async function startProcessing(
   const durationMs = options.durationMs ?? Math.round((totalBytes / 16_000) * 1000);
 
   if (totalBytes <= SINGLE_UPLOAD_MAX_BYTES) {
-    const jobId = await uploadSingle(uri, keyterms, durationMs, options.onProgress);
+    const jobId = await uploadSingle(uri, keyterms, durationMs, options.onProgress, options.attendees);
     if (options.pendingId) {
       await updatePendingUploadState(options.pendingId, {
         processingJobId: jobId,
@@ -156,7 +162,7 @@ export async function processRecording(
     : await estimateDurationSec(uri);
 
   if (pending && shouldPollExistingJob(pending)) {
-    return poll(pending.processingJobId!, durationSec, options.onProgress);
+    return poll(pending.processingJobId!, durationSec, options.onProgress, options.onPreview);
   }
 
   options.onProgress?.(UPLOAD_PROGRESS_START);
@@ -168,7 +174,7 @@ export async function processRecording(
       : { ...options, resumeUploadId: null, startPartIndex: 0 },
   );
   options.onProgress?.(QUEUED_PROGRESS);
-  return poll(jobId, durationSec, options.onProgress);
+  return poll(jobId, durationSec, options.onProgress, options.onPreview);
 }
 
 async function uploadSingle(
@@ -176,6 +182,7 @@ async function uploadSingle(
   keyterms: string[],
   durationMs: number,
   onProgress?: (progress: number) => void,
+  attendees: string[] = [],
 ): Promise<string> {
   onProgress?.(UPLOAD_PROGRESS_START);
   const form = new FormData();
@@ -188,15 +195,17 @@ async function uploadSingle(
   if (keyterms.length) {
     form.append("keyterms", JSON.stringify(keyterms));
   }
+  if (attendees.length) {
+    form.append("attendees", JSON.stringify(attendees));
+  }
 
+  const headers = await authHeaders();
   const response = await withRetries(() => fetch(`${API_URL}/v1/conversations/process`, {
     method: "POST",
+    headers,
     body: form,
   }));
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Processing failed (${response.status})`);
-  }
+  if (!response.ok) throw await readApiError(response, "Processing failed");
   const queued = (await response.json()) as ProcessingJobState;
   if (queued.status !== "queued") throw new Error("The processing job was not queued");
   onProgress?.(UPLOAD_PROGRESS_MAX);
@@ -221,6 +230,7 @@ async function uploadPartFile(
     chunkUri,
     {
       httpMethod: "POST",
+      headers: await authHeaders(),
       uploadType: FileSystem.FileSystemUploadType.MULTIPART,
       fieldName: "part",
       mimeType: "application/octet-stream",
@@ -256,9 +266,10 @@ async function uploadMultipart(
   let partSize = UPLOAD_PART_BYTES;
 
   if (!uploadId) {
+    const initHeaders = { "Content-Type": "application/json", ...(await authHeaders()) };
     const initResponse = await withRetries(() => fetch(`${API_URL}/v1/conversations/process/upload/init`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: initHeaders,
       body: JSON.stringify({
         filename: `conversation-${Date.now()}.m4a`,
         mimetype: "audio/mp4",
@@ -267,9 +278,7 @@ async function uploadMultipart(
         keyterms,
       }),
     }));
-    if (!initResponse.ok) {
-      throw new Error(await initResponse.text() || `Upload init failed (${initResponse.status})`);
-    }
+    if (!initResponse.ok) throw await readApiError(initResponse, "Upload init failed");
     const initPayload = (await initResponse.json()) as {
       uploadId: string;
       partSizeBytes?: number;
@@ -327,42 +336,58 @@ async function uploadMultipart(
   }
   options.onProgress?.(UPLOAD_PROGRESS_MAX);
 
+  const completeHeaders = { "Content-Type": "application/json", ...(await authHeaders()) };
   const completeResponse = await withRetries(() => fetch(
     `${API_URL}/v1/conversations/process/upload/complete`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uploadId }),
+      headers: completeHeaders,
+      body: JSON.stringify({ uploadId, attendees: options.attendees ?? [] }),
     },
   ));
-  if (!completeResponse.ok) {
-    throw new Error(await completeResponse.text() || `Upload complete failed (${completeResponse.status})`);
-  }
+  if (!completeResponse.ok) throw await readApiError(completeResponse, "Upload complete failed");
   const queued = (await completeResponse.json()) as ProcessingJobState;
   if (queued.status !== "queued") throw new Error("The processing job was not queued");
   return { jobId: queued.jobId, uploadId: uploadId!, lastPartIndex: partCount };
+}
+
+/** Polls any processing job (recordings and Google Meet imports) until it finishes. */
+export function pollProcessingJob(
+  jobId: string,
+  options: Pick<ProcessRecordingOptions, "onProgress" | "onPreview"> & { durationSec?: number } = {},
+): Promise<ProcessedConversation> {
+  return poll(jobId, options.durationSec, options.onProgress, options.onPreview);
 }
 
 async function poll(
   jobId: string,
   durationSec?: number,
   onProgress?: (progress: number) => void,
+  onPreview?: (preview: ProcessingPreview) => void,
 ): Promise<ProcessedConversation> {
+  let lastPreviewKey = "";
   const deadline = Date.now() + computePollDeadlineMs(durationSec);
   while (Date.now() < deadline) {
     await sleep(1_250);
     const response = await fetch(`${API_URL}/v1/conversations/process/status`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({ jobId }),
     });
-    if (!response.ok) throw new Error(`Could not check processing (${response.status})`);
+    if (!response.ok) throw await readApiError(response, "Could not check processing");
     const state = (await response.json()) as ProcessingJobState;
     if (state.status === "queued") {
       onProgress?.(QUEUED_PROGRESS);
     }
     if (state.status === "processing" && typeof state.progress === "number") {
       onProgress?.(Math.max(QUEUED_PROGRESS, state.progress));
+    }
+    if (state.status === "processing" && state.preview) {
+      const key = `${state.preview.summary ?? ""}|${state.preview.transcript.length}`;
+      if (key !== lastPreviewKey) {
+        lastPreviewKey = key;
+        onPreview?.(state.preview);
+      }
     }
     if (state.status === "complete") return state.result;
     if (state.status === "failed") throw new Error(state.error);

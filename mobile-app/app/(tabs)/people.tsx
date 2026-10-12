@@ -1,15 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { listPeople, type PersonMemory } from "../src/db/insights";
-import { relativeDate } from "../src/utils/format";
-import { radii, shadows, spacing, typeScale, useAppTheme } from "../src/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabBarClearance } from "../../src/components/FloatingTabBar";
+import { listPeople, type PersonMemory } from "../../src/db/insights";
+import { relativeDate } from "../../src/utils/format";
+import { PeopleScene } from "../../src/components/illustrations/scenes";
+import { fonts, radii, shadows, spacing, typeScale, useAppTheme } from "../../src/theme";
 
 export default function PeopleScreen() {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
   const [people, setPeople] = useState<PersonMemory[]>([]);
+  const insets = useSafeAreaInsets();
+  const clearance = useTabBarClearance();
 
   useFocusEffect(useCallback(() => {
     void listPeople().then(setPeople);
@@ -18,7 +23,7 @@ export default function PeopleScreen() {
   return (
     <ScrollView
       style={{ backgroundColor: colors.background }}
-      contentContainerStyle={[styles.content, !people.length && styles.emptyContent]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.lg, paddingBottom: clearance }, !people.length && styles.emptyContent]}
       showsVerticalScrollIndicator={false}
     >
       <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>
@@ -30,13 +35,10 @@ export default function PeopleScreen() {
 
       {!people.length ? (
         <View style={styles.emptyVisual} accessibilityLabel="No remembered people yet">
-          <Image
-            source={isDark
-              ? require("../assets/empty-people-dark.png")
-              : require("../assets/empty-people.png")}
-            resizeMode="contain"
-            style={styles.emptyImage}
-          />
+          <PeopleScene size={280} />
+          <Text style={[styles.intro, { color: colors.muted, textAlign: "center" }]}>
+            Name the voices in a memory and they'll show up here, with what you know about each of them.
+          </Text>
         </View>
       ) : (
         <View style={styles.list}>
@@ -83,7 +85,7 @@ export default function PeopleScreen() {
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: 48 },
   emptyContent: { flexGrow: 1 },
-  heading: { fontSize: typeScale.title1, fontWeight: "800", letterSpacing: -1 },
+  heading: { fontFamily: fonts.display, fontSize: 40, lineHeight: 46, letterSpacing: -0.3 },
   intro: { fontSize: typeScale.body, lineHeight: 22, marginTop: spacing.xs, marginBottom: spacing.lg },
   list: { gap: spacing.sm },
   row: {
@@ -100,6 +102,6 @@ const styles = StyleSheet.create({
   name: { fontSize: typeScale.bodyLarge, fontWeight: "800" },
   meta: { fontSize: typeScale.caption, marginTop: 3, fontWeight: "600" },
   topics: { fontSize: 12, marginTop: 4 },
-  emptyVisual: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: spacing.xl },
+  emptyVisual: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: spacing.xl, gap: spacing.sm },
   emptyImage: { width: 300, height: 300, borderRadius: radii.xl },
 });

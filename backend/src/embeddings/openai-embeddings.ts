@@ -1,4 +1,5 @@
 import { ServiceUnavailableException } from "@nestjs/common";
+import { estimateTokens, recordUsage } from "../billing/usage-meter.js";
 
 const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
@@ -93,7 +94,13 @@ export async function createOpenAiEmbeddings(
   }
   const payload = (await response.json()) as {
     data?: Array<{ index?: number; embedding?: number[] }>;
+    usage?: { total_tokens?: number };
   };
+  recordUsage({
+    embedTokens: payload.usage?.total_tokens && payload.usage.total_tokens > 0
+      ? payload.usage.total_tokens
+      : input.reduce((total, text) => total + estimateTokens(text), 0),
+  });
   const ordered = [...(payload.data ?? [])].sort(
     (left, right) => (left.index ?? -1) - (right.index ?? -1),
   );

@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "memory-ai.db";
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 11;
 
 export const MIGRATION_1 = `
 PRAGMA journal_mode = WAL;
@@ -295,4 +295,54 @@ CREATE INDEX IF NOT EXISTS idx_ask_turns_conversation
 CREATE INDEX IF NOT EXISTS idx_ask_turns_global
   ON ask_turns(created_at)
   WHERE conversation_id IS NULL;
+`;
+
+/**
+ * Folders work offline with no account. dirty/deleted_at let them sync to the
+ * optional cloud mirror (backend/supabase/folders.sql) when the user opts in.
+ * Links have no FK to conversations so a deleted memory still leaves a
+ * tombstone the cloud can learn about.
+ */
+export const MIGRATION_10 = `
+CREATE TABLE IF NOT EXISTS folders (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT,
+  dirty INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_live_name
+  ON folders(name COLLATE NOCASE)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS folder_recordings (
+  folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL,
+  added_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT,
+  dirty INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (folder_id, conversation_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_folder_recordings_conversation
+  ON folder_recordings(conversation_id);
+
+CREATE TABLE IF NOT EXISTS sync_state (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT
+);
+`;
+
+export const MIGRATION_11 = `
+ALTER TABLE conversations ADD COLUMN source TEXT NOT NULL DEFAULT 'recording';
+ALTER TABLE conversations ADD COLUMN external_id TEXT;
+ALTER TABLE conversations ADD COLUMN occurred_at TEXT;
+ALTER TABLE conversations ADD COLUMN calendar_event_json TEXT;
+ALTER TABLE pending_recordings ADD COLUMN calendar_event_json TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_external_id
+ON conversations(external_id) WHERE external_id IS NOT NULL;
 `;

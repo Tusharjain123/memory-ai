@@ -1,28 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { authoritativeSegments } from "../src/processing/transcript-fidelity.js";
-import type { Understanding } from "../src/processing/result.schema.js";
+import type { SegmentPolish } from "../src/processing/result.schema.js";
 
-const baseUnderstanding: Understanding = {
-  title: "Test",
-  mainGoal: "Test fidelity",
-  summary: "A summary",
-  topics: [],
-  cleanTranscript: "We will deploy today.",
-  romanHinglishTranscript: "Aaj deploy karenge.",
-  participants: [],
-  decisions: [],
-  commitments: [],
-  memoryCandidates: [],
-  segments: [{
-    id: "invented-id",
-    speakerLabel: "Wrong speaker",
-    startMs: 999_000,
-    endMs: 999_999,
-    rawText: "Altered raw text",
-    cleanText: "We will deploy today.",
-    romanHinglishText: "Aaj deploy karenge.",
-  }],
-};
+const polish: SegmentPolish[] = [{
+  id: "segment-1",
+  cleanText: "We will deploy today.",
+  romanHinglishText: "Aaj deploy karenge.",
+}];
 
 describe("authoritativeSegments", () => {
   it("preserves Deepgram speaker, timing, and raw words", () => {
@@ -36,7 +20,7 @@ describe("authoritativeSegments", () => {
         endMs: 1_900,
         text: "आज deploy करेंगे.",
       }],
-    }, baseUnderstanding);
+    }, polish);
 
     expect(segments).toEqual([{
       id: "segment-1",
@@ -55,7 +39,7 @@ describe("authoritativeSegments", () => {
       language: "multi",
       durationMs: 500,
       utterances: [],
-    }, { ...baseUnderstanding, segments: [] });
+    }, []);
     expect(segments[0]).toMatchObject({
       rawText: "Raw fallback",
       cleanText: "Raw fallback",

@@ -223,6 +223,17 @@ export default function ConversationScreen() {
           <PrivacyPill compact />
         </View>
         <Text accessibilityRole="header" style={[styles.title, { color: colors.ink }]}>{item.title}</Text>
+        {item.source === "google_meet" || item.calendarEvent ? (
+          <View style={[styles.sourceBadge, { backgroundColor: colors.accentSoft }]}>
+            <Ionicons name={item.source === "google_meet" ? "videocam-outline" : "calendar-outline"} size={14} color={colors.accent} />
+            <Text numberOfLines={2} style={[styles.sourceBadgeText, { color: colors.accent }]}>
+              {item.source === "google_meet" ? "From Google Meet" : `Calendar: ${item.calendarEvent?.title ?? ""}`}
+              {item.calendarEvent?.attendees.length
+                ? ` · with ${item.calendarEvent.attendees.slice(0, 3).join(", ")}${item.calendarEvent.attendees.length > 3 ? ` +${item.calendarEvent.attendees.length - 3}` : ""}`
+                : ""}
+            </Text>
+          </View>
+        ) : null}
         {item.recordingUri ? (
           <View style={styles.player}>
             <RecordingPlayer player={clip} fallbackDurationMs={item.durationMs} />
@@ -526,6 +537,11 @@ export default function ConversationScreen() {
               <Text style={[styles.privateBody, { color: colors.muted }]}>This memory and its AI index live only on this device.</Text>
             </View>
           </View>
+          <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/add-to-folder", params: { conversationId: item.id } } as never)} style={[styles.menuRow, { borderBottomColor: colors.line }]}>
+            <View style={[styles.menuIcon, { backgroundColor: colors.surfaceMuted }]}><Ionicons name="folder-outline" size={20} color={colors.ink} /></View>
+            <View style={styles.menuCopy}><Text style={[styles.menuTitle, { color: colors.ink }]}>Add to folder</Text><Text style={[styles.menuBody, { color: colors.muted }]}>Organise this memory with others</Text></View>
+            <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+          </Pressable>
           <Pressable accessibilityRole="button" onPress={() => void exportConversation(item).catch((cause: unknown) => Alert.alert("Couldn’t export", cause instanceof Error ? cause.message : "Try again"))} style={[styles.menuRow, { borderBottomColor: colors.line }]}>
             <View style={[styles.menuIcon, { backgroundColor: colors.surfaceMuted }]}><Ionicons name="share-outline" size={20} color={colors.ink} /></View>
             <View style={styles.menuCopy}><Text style={[styles.menuTitle, { color: colors.ink }]}>Export memory</Text><Text style={[styles.menuBody, { color: colors.muted }]}>Share a readable Markdown copy</Text></View>
@@ -558,6 +574,8 @@ const styles = StyleSheet.create({
   hero: { paddingVertical: spacing.md },
   metadata: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   date: { fontSize: typeScale.caption, fontWeight: "600" },
+  sourceBadge: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 5, marginTop: spacing.sm, maxWidth: "100%" },
+  sourceBadgeText: { flexShrink: 1, fontSize: 12, fontWeight: "800" },
   title: { fontSize: typeScale.title1, lineHeight: 40, fontWeight: "800", letterSpacing: -1.1, marginTop: spacing.md },
   player: { marginTop: spacing.md },
   reviewBanner: {

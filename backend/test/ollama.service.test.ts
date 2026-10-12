@@ -1,23 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OllamaService } from "../src/processing/ollama.service.js";
 
+const polish = [{
+  id: "segment-1",
+  cleanText: "We will deploy today.",
+  romanHinglishText: "Aaj deploy karenge.",
+}];
+
 const understanding = {
   title: "Deployment planning",
   mainGoal: "Plan today's deployment",
   summary: "Rahul will complete deployment today.",
   topics: ["deployment"],
-  cleanTranscript: "We will deploy today.",
-  romanHinglishTranscript: "Aaj deploy karenge.",
   participants: [{ name: "Rahul", speakerLabel: "Speaker 1" }],
-  segments: [{
-    id: "segment-1",
-    speakerLabel: "Speaker 1",
-    startMs: 0,
-    endMs: 2_000,
-    rawText: "Aaj deploy karenge.",
-    cleanText: "We will deploy today.",
-    romanHinglishText: "Aaj deploy karenge.",
-  }],
   decisions: [{
     id: "decision-1",
     text: "Deploy today",
@@ -72,7 +67,7 @@ describe("OllamaService", () => {
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await new OllamaService().embed(understanding);
+    const result = await new OllamaService().embed({ ...understanding, segments: polish });
 
     expect(result).toHaveLength(2);
     expect(result.every((item) => item.model === "text-embedding-3-large:2")).toBe(true);
@@ -114,7 +109,9 @@ describe("OllamaService", () => {
     expect(body.format.properties).not.toHaveProperty("actionItems");
     const system = body.messages.find((message) => message.role === "system")?.content ?? "";
     const user = body.messages.find((message) => message.role === "user")?.content ?? "";
-    expect(system).toContain("fix only obvious ASR typos");
+    expect(system).toContain("Do not repeat or rewrite the transcript");
+    expect(body.format.required).not.toContain("segments");
+    expect(body.format.required).not.toContain("cleanTranscript");
     expect(system).toContain("explicit promises");
     expect(system).toContain("Do not invent evidence");
     expect(user).toContain("Detected languages: hi");
@@ -271,9 +268,8 @@ describe("OllamaService", () => {
         },
       ],
       memoryCandidates: [],
-      cleanTranscript: "Untrusted top-level text",
-      romanHinglishTranscript: "Untrusted top-level text",
     });
+    vi.spyOn(service, "polishSegments").mockResolvedValue(polish);
     vi.spyOn(service, "embed").mockResolvedValue([]);
 
     const result = await service.assemble({
@@ -313,6 +309,7 @@ describe("OllamaService", () => {
   it("creates the memory when optional embedding generation fails", async () => {
     const service = new OllamaService();
     vi.spyOn(service, "understand").mockResolvedValue(understanding);
+    vi.spyOn(service, "polishSegments").mockResolvedValue(polish);
     vi.spyOn(service, "embed").mockRejectedValue(new Error("Embedding failed (401)"));
 
     const result = await service.assemble({

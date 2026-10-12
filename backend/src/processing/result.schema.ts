@@ -1,17 +1,5 @@
 import { z } from "zod";
 
-const segmentSchema = z.object({
-  id: z.string(),
-  speakerLabel: z.string(),
-  startMs: z.number().nonnegative(),
-  endMs: z.number().nonnegative(),
-  rawText: z.string(),
-  cleanText: z.string(),
-  romanHinglishText: z.string(),
-}).refine((segment) => segment.endMs >= segment.startMs, {
-  message: "Segment end must not precede its start",
-});
-
 const confidenceSchema = z.enum(["low", "medium", "high"]);
 
 const evidenceFields = {
@@ -20,17 +8,18 @@ const evidenceFields = {
   quote: z.string().nullable(),
 };
 
-export const understandingSchema = z.object({
+/**
+ * Small, fast LLM pass: summary, people, decisions, tasks and memories.
+ * Transcript text is never echoed back here; Deepgram stays authoritative.
+ */
+export const insightsSchema = z.object({
   title: z.string().min(1),
   mainGoal: z.string(),
   summary: z.string(),
   topics: z.array(z.string()),
-  cleanTranscript: z.string(),
-  romanHinglishTranscript: z.string(),
   participants: z.array(
     z.object({ name: z.string(), speakerLabel: z.string() }),
   ),
-  segments: z.array(segmentSchema),
   decisions: z.array(
     z.object({
       id: z.string(),
@@ -62,7 +51,39 @@ export const understandingSchema = z.object({
   ),
 });
 
-export type Understanding = z.infer<typeof understandingSchema>;
+export type Insights = z.infer<typeof insightsSchema>;
+
+/** Per-segment clean / romanized text, produced in parallel batches. */
+export const segmentPolishSchema = z.object({
+  segments: z.array(z.object({
+    id: z.string(),
+    cleanText: z.string(),
+    romanHinglishText: z.string(),
+  })),
+});
+
+export type SegmentPolish = z.infer<typeof segmentPolishSchema>["segments"][number];
+
+export const segmentPolishJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["segments"],
+  properties: {
+    segments: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "cleanText", "romanHinglishText"],
+        properties: {
+          id: { type: "string" },
+          cleanText: { type: "string" },
+          romanHinglishText: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
 
 const evidenceJsonProperties = {
   confidence: { type: "string", enum: ["low", "medium", "high"] },
@@ -70,7 +91,7 @@ const evidenceJsonProperties = {
   quote: { type: ["string", "null"] },
 } as const;
 
-export const understandingJsonSchema = {
+export const insightsJsonSchema = {
   type: "object",
   additionalProperties: false,
   required: [
@@ -78,10 +99,7 @@ export const understandingJsonSchema = {
     "mainGoal",
     "summary",
     "topics",
-    "cleanTranscript",
-    "romanHinglishTranscript",
     "participants",
-    "segments",
     "decisions",
     "commitments",
     "memoryCandidates",
@@ -91,8 +109,6 @@ export const understandingJsonSchema = {
     mainGoal: { type: "string" },
     summary: { type: "string" },
     topics: { type: "array", items: { type: "string" } },
-    cleanTranscript: { type: "string" },
-    romanHinglishTranscript: { type: "string" },
     participants: {
       type: "array",
       items: {
@@ -102,31 +118,6 @@ export const understandingJsonSchema = {
         properties: {
           name: { type: "string" },
           speakerLabel: { type: "string" },
-        },
-      },
-    },
-    segments: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "id",
-          "speakerLabel",
-          "startMs",
-          "endMs",
-          "rawText",
-          "cleanText",
-          "romanHinglishText",
-        ],
-        properties: {
-          id: { type: "string" },
-          speakerLabel: { type: "string" },
-          startMs: { type: "number", minimum: 0 },
-          endMs: { type: "number", minimum: 0 },
-          rawText: { type: "string" },
-          cleanText: { type: "string" },
-          romanHinglishText: { type: "string" },
         },
       },
     },

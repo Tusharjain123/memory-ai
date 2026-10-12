@@ -1,5 +1,8 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import type { ProcessedConversation } from "../contracts";
+import { supabaseConfig as resolveSupabase, supabaseHeaders } from "../supabase/supabase-rest.js";
+
+const supabaseConfig = () => resolveSupabase("hand off processing results");
 
 const RESULT_FETCH_TIMEOUT_MS = 60_000;
 
@@ -67,28 +70,4 @@ export class ProcessingResultStore {
       );
     }
   }
-}
-
-function supabaseConfig(): { url: string; secret: string } {
-  const url = process.env.SUPABASE_URL?.trim().replace(/\/+$/, "");
-  const secret = process.env.SUPABASE_SECRET_KEY?.trim();
-  if (!url || !secret) {
-    throw new ServiceUnavailableException(
-      "SUPABASE_URL and SUPABASE_SECRET_KEY are required to hand off processing results",
-    );
-  }
-  return { url, secret };
-}
-
-function supabaseHeaders(
-  secret: string,
-  extra: Record<string, string>,
-): Record<string, string> {
-  return {
-    apikey: secret,
-    Authorization: `Bearer ${secret}`,
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    ...extra,
-  };
 }
