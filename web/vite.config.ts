@@ -42,6 +42,15 @@ export default defineConfig(async ({ mode }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    /* Allow sharing the dev server through ngrok. A leading dot matches every
+       subdomain, so the random address ngrok assigns each session works
+       without editing this file again. Only ngrok hosts are added. */
+    server: {
+      allowedHosts: [".ngrok-free.app", ".ngrok.app"],
+    },
+    preview: {
+      allowedHosts: [".ngrok-free.app", ".ngrok.app"],
+    },
     plugins: [
       vinext(),
       sites({ mockAuth: true }),

@@ -1,29 +1,32 @@
 "use client";
 /* Images are pre-optimized WebP assets served locally; no runtime image service is needed. */
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
-  ArrowUpRight,
-  ArrowRight,
-  Sparkles,
-  ShieldCheck,
-  MessageCircle,
-  Cloud,
-  Smartphone,
-  LockKeyhole,
-  FileDown,
-  Trash2,
-  Menu,
-  Play,
-  X,
+  BrainCircuit,
   CheckCheck,
-  CalendarClock,
+  Mic,
+  Plus,
+  ShieldCheck,
+  Smartphone,
+  Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import { WaitlistForm } from "./waitlist-form";
-import { AskAnswer } from "./app-ui/ask-answer";
-import { PhoneFrame } from "./app-ui/phone-frame";
-import { LiveCapture } from "./app-ui/live-capture";
-import { FadingNotes } from "./app-ui/fading-notes";
+import { FlowFilm } from "./flow-film";
+import { HeroEquation } from "./hero-equation";
+import { tagline } from "@/lib/site-copy";
+import { SiteFooter, SiteHeader } from "./site-chrome";
+import { useReveal } from "@/lib/use-reveal";
+import {
+  displayTitle,
+  eyebrow,
+  lede,
+  reveal,
+  sectionTitle,
+  shell,
+} from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 function subscribeToMotionPreference(onChange: () => void) {
@@ -34,128 +37,89 @@ function subscribeToMotionPreference(onChange: () => void) {
 const getReducedMotion = () => window.matchMedia(reducedMotionQuery).matches;
 const getServerReducedMotion = () => true;
 
-const demoSteps = [
+const steps: { icon: LucideIcon; title: string; body: string }[] = [
   {
-    when: "During",
-    text: "Put your phone on the table and record. No bot, no typing.",
+    icon: Mic,
+    title: "Capture",
+    body: "Import a Google Meet transcript, or record in person from your phone. No bot joins.",
   },
   {
-    when: "After",
-    text: "Confirm the promises and decisions AI picked up. They join your commitments.",
+    icon: BrainCircuit,
+    title: "Understand",
+    body: "AI picks out promises, decisions and details. You approve what’s saved.",
   },
   {
-    when: "Later",
-    text: "Ask what was agreed and get the answer from your own conversations.",
-  },
-  {
-    when: "Before the next meeting",
-    text: "Open a short brief: the last conversation and what’s still open.",
-  },
-];
-
-const oneToOne = [
-  {
-    pain: "No bot can join a coffee.",
-    fix: "Your phone on the table is enough.",
-  },
-  {
-    pain: "Typing notes across the table feels rude.",
-    fix: "Stay present. Review the key points afterwards.",
-  },
-  {
-    pain: "There are no shared minutes, only two memories.",
-    fix: "Commitments on both sides, with the exact words.",
-  },
-];
-
-const fixes = [
-  {
-    className: "fix-commitments",
     icon: CheckCheck,
-    pain: "I promised something and forgot.",
-    title: "Every commitment, with the moment you made it.",
-    body: "What you owe and what others owe you, each linked to the conversation where it was said.",
-    image: "screen-commitments",
-    alt: "Actual commitments screen listing what is owed, with source evidence. Fictional demo data.",
-    foot: "Commitments",
+    title: "Recall",
+    body: "Ask in plain words, or open a brief before you meet again.",
+  },
+];
+
+const insights = [
+  {
+    title: "Every promise, with the moment it was made.",
+    image: "/images/screen-commitments-clean.webp",
+    height: 1117,
+    alt: "Commitments screen listing what is owed, each with the exact quote. Sample data.",
   },
   {
-    className: "fix-ask",
-    icon: MessageCircle,
-    pain: "We remember the decision differently.",
-    title: "Ask what was agreed. Follow it to the source.",
-    body: "Ask about one conversation or across saved memories, and follow supporting references back to what was said.",
-    image: "ask",
-    alt: "Actual Memory AI question and answer about a promised proposal. Fictional demo data.",
-    foot: "Ask your memory",
+    title: "Ask what was agreed. Get the answer from your own conversations.",
+    image: "/images/screen-ask.webp",
+    height: 1117,
+    alt: "Ask Memory screen answering what was promised to a client last week. Sample data.",
   },
   {
-    className: "fix-prep",
-    icon: CalendarClock,
-    pain: "I walk into calls without context.",
-    title: "A short brief before you meet.",
-    body: "The last conversation, open commitments and the details that matter, gathered into one preparation view.",
-    image: "screen-person-prep",
-    alt: "Actual preparation brief for an upcoming conversation with Aarav Mehta. Fictional demo data.",
-    foot: "Preparation",
+    title: "A short brief before you meet someone again.",
+    image: "/images/screen-person-prep.webp",
+    height: 1218,
+    alt: "Prep brief before meeting Aarav Mehta: last conversation, open promises, preferences. Sample data.",
   },
+];
+
+const privacy: { icon: LucideIcon; text: string }[] = [
+  { icon: Smartphone, text: "Memories stay on your phone" },
+  { icon: Trash2, text: "Audio deleted after processing" },
+  { icon: ShieldCheck, text: "You approve what’s saved" },
 ];
 
 const faqs = [
   {
     q: "Does a bot join my meeting?",
-    a: (
-      <>
-        No. In person, Memory AI records from your phone, which makes it a fit
-        for <a href="#one-to-one">one-to-one conversations</a>. For Google Meet
-        calls, connect your Google Calendar and import the meeting’s transcript
-        afterwards. Nothing joins the call.
-      </>
-    ),
+    a: "No. In person, Memory AI records from your phone. For Google Meet, connect your calendar and import the meeting’s transcript afterwards. Nothing joins the call.",
   },
   {
     q: "Which online meetings does it work with?",
-    a: "Google Meet, for now. Meet saves transcripts only on Google Workspace plans with transcription turned on, and a transcript can be imported for 30 days after the meeting. Calendar access is read-only; Memory AI never changes your calendar.",
-  },
-  {
-    q: "Does it work when we mix Hindi and English?",
-    a: "Yes. Transcripts come in the original, a cleaned-up version and Roman Hinglish.",
-  },
-  {
-    q: "What if my connection drops while it’s processing?",
-    a: "The recording waits safely on your device and finishes processing when it can.",
+    a: "Google Meet, for now. Meet saves transcripts on Google Workspace plans with transcription turned on, and a transcript can be imported for 30 days after the meeting.",
   },
   {
     q: "Where do my memories live?",
-    a: "On your phone. Audio and imported Meet transcripts go to cloud services for transcription and AI, and are deleted from our servers as soon as processing finishes. The result waits briefly until your phone collects it. Cloud backup is optional and off by default: it saves your folders and profile to your account, while recordings and transcripts stay on your phone. Clearing the app’s data removes anything that isn’t backed up.",
-  },
-  {
-    q: "Is it on iPhone?",
-    a: "Not yet. Memory AI is an Android app right now.",
+    a: "On your phone. Audio and imported transcripts go to cloud services for transcription and AI, and are deleted from our servers as soon as processing finishes.",
   },
   {
     q: "How much does it cost?",
-    a: "You pay for what you use. Sign in with Google and your account starts with 5,000 free tokens. Each conversation uses tokens based on its length, and you can top up with a prepaid pack whenever you need more. No subscription.",
-  },
-  {
-    q: "Should I tell people I’m recording?",
-    a: "Yes. Always ask before you record a conversation.",
-  },
-  {
-    q: "Can I use it today?",
-    a: "It’s in early access on Android. Join the list and we’ll email you personally when your spot opens.",
-  },
-  {
-    q: "What’s new?",
-    a: "Google Calendar and Meet transcript import, folders to group memories by client, and optional cloud backup for those folders.",
+    a: "You pay for what you use. Your account starts with 5,000 free tokens, and you can top up with a prepaid pack. No subscription.",
   },
 ];
 
-const nextSteps = [
-  "Join with your email. No account needed.",
-  "We email you personally when your spot opens.",
-  "Install the Android app and sign in with Google. You start with 5,000 free tokens, and the first 15 members get a setup call with the founder.",
-];
+function SectionHead({
+  label,
+  title,
+  body,
+  className,
+}: {
+  label: string;
+  title: React.ReactNode;
+  body?: string;
+  className?: string;
+}) {
+  return (
+    <div data-reveal className={cn(reveal, "mx-auto max-w-2xl text-center", className)}>
+      <p className={eyebrow}>{label}</p>
+      <h2 className={cn(sectionTitle, "mt-4")}>{title}</h2>
+      {body && <p className={cn(lede, "mt-4")}>{body}</p>}
+    </div>
+  );
+}
 
 export function Landing({
   deckUrl,
@@ -169,9 +133,9 @@ export function Landing({
     getReducedMotion,
     getServerReducedMotion,
   );
-  const [menuOpen, setMenuOpen] = useState(false);
   const demoVideo = useRef<HTMLVideoElement>(null);
-  const heroVisual = useRef<HTMLDivElement>(null);
+  useReveal();
+
   /* The demo starts itself, muted, the first time it scrolls into view —
      never under reduced motion, and never again once it has started, so a
      reader who pauses it stays in charge. */
@@ -190,568 +154,224 @@ export function Landing({
     return () => observer.disconnect();
   }, [reducedMotion]);
 
-  /* Scroll reveals. Containers marked data-reveal-stagger hand each child an
-     index so they arrive in sequence rather than all at once. */
-  useEffect(() => {
-    const media = window.matchMedia(reducedMotionQuery);
-    if (media.matches || !("IntersectionObserver" in window)) return;
-    const observer = new IntersectionObserver(
-      (entries) =>
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("is-visible");
-            observer.unobserve(entry.target);
-          }
-        }),
-      { threshold: 0.08 },
-    );
-    const elements = document.querySelectorAll("[data-reveal]");
-    elements.forEach((element) => {
-      element.classList.add("will-reveal");
-      if (element.hasAttribute("data-reveal-stagger"))
-        Array.from(element.children).forEach((child, index) =>
-          (child as HTMLElement).style.setProperty("--i", String(index)),
-        );
-      observer.observe(element);
-    });
-    const showAll = () => {
-      if (media.matches)
-        elements.forEach((element) => element.classList.add("is-visible"));
-    };
-    media.addEventListener("change", showAll);
-    return () => {
-      observer.disconnect();
-      media.removeEventListener("change", showAll);
-    };
-  }, []);
-
-  /* The hero leans very slightly toward the pointer. Enough to feel alive,
-     small enough that nobody consciously notices it. Desktop pointers only. */
-  useEffect(() => {
-    const element = heroVisual.current;
-    if (reducedMotion || !element) return;
-    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches)
-      return;
-    if (window.innerWidth < 1100) return;
-    let frame = 0;
-    let pending: { x: number; y: number } | null = null;
-    const apply = () => {
-      frame = 0;
-      if (!pending) return;
-      element.style.setProperty("--tilt-x", pending.x.toFixed(3));
-      element.style.setProperty("--tilt-y", pending.y.toFixed(3));
-    };
-    const onMove = (event: PointerEvent) => {
-      const box = element.getBoundingClientRect();
-      pending = {
-        x: ((event.clientX - box.left) / box.width) * 2 - 1,
-        y: ((event.clientY - box.top) / box.height) * 2 - 1,
-      };
-      if (!frame) frame = window.requestAnimationFrame(apply);
-    };
-    const onLeave = () => {
-      pending = { x: 0, y: 0 };
-      if (!frame) frame = window.requestAnimationFrame(apply);
-    };
-    element.addEventListener("pointermove", onMove);
-    element.addEventListener("pointerleave", onLeave);
-    return () => {
-      element.removeEventListener("pointermove", onMove);
-      element.removeEventListener("pointerleave", onLeave);
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, [reducedMotion]);
-
-  const returnToSignup = () => {
-    setMenuOpen(false);
-    window.setTimeout(
-      () =>
-        document
-          .getElementById("waitlist-email")
-          ?.focus({ preventScroll: true }),
-      100,
-    );
-  };
   return (
     <>
-      <a className="skip-link" href="#main">
-        Skip to content
-      </a>
-      <header className="site-header">
-        <div className="shell nav-inner">
-          <a
-            className="brand"
-            href="#main"
-            onClick={() => setMenuOpen(false)}
-            aria-label="Memory AI home"
+      <SiteHeader onHome />
+      <main id="main" className="relative overflow-x-clip">
+        {/* Ambient glow behind the hero */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[720px] w-[1100px] -translate-x-1/2 bg-[radial-gradient(ellipse_at_center,var(--accent-soft),transparent_65%)] opacity-90"
+        />
+
+        {/* ── Hero: one picture, one line, one field ── */}
+        <section
+          aria-labelledby="hero-title"
+          className={cn(shell, "pt-14 text-center sm:pt-20")}
+        >
+          <HeroEquation />
+          <h1
+            id="hero-title"
+            className={cn(
+              displayTitle,
+              "mx-auto mt-10 text-[clamp(2.75rem,7vw,5.5rem)] leading-[1.02]",
+            )}
           >
-            <img src="/images/logo.png" width="44" height="44" alt="" />
-            <span>
-              Memory<span className="brand-ai">ai</span>
+            <span className="block text-faint">{tagline.lead}</span>
+            <span className="block">
+              {tagline.promise}{" "}
+              <em className="text-accent-ink">{tagline.promiseAccent}</em>
             </span>
-          </a>
-          <nav className="desktop-nav" aria-label="Main navigation">
-            <a href="#the-problem">The problem</a>
-            <a href="#demo">How it works</a>
-            <a href="#privacy">Privacy</a>
-            <a href="#faq">FAQ</a>
-          </nav>
-          <div className="nav-actions">
-            <a
-              className="button button-small"
-              href="#early-access"
-              onClick={returnToSignup}
-            >
-              Join early access <ArrowRight size={16} />
-            </a>
-            <button
-              className="menu-toggle"
-              aria-label={menuOpen ? "Close navigation" : "Open navigation"}
-              aria-expanded={menuOpen}
-              aria-controls="mobile-navigation"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              {menuOpen ? <X /> : <Menu />}
-            </button>
-          </div>
-        </div>
-        {menuOpen && (
-          <nav
-            id="mobile-navigation"
-            className="mobile-nav"
-            aria-label="Mobile navigation"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setMenuOpen(false);
-            }}
-          >
-            {[
-              ["The problem", "#the-problem"],
-              ["How it works", "#demo"],
-              ["Privacy", "#privacy"],
-              ["FAQ", "#faq"],
-            ].map(([label, url]) => (
-              <a key={url} href={url} onClick={() => setMenuOpen(false)}>
-                {label}
-                <ArrowUpRight size={18} />
-              </a>
-            ))}
-          </nav>
-        )}
-      </header>
-      <main id="main">
-        <section className="hero shell" aria-labelledby="hero-title">
-          <div className="hero-copy">
-            <p className="eyebrow">
-              <span className="eyebrow-line" /> For back-to-back client
-              conversations
-            </p>
-            <h1 id="hero-title">
-              You said you’d
-              <br />
-              follow up.
-              <br />
-              <span>Did you?</span>
-            </h1>
-            <p className="hero-description">
-              Memory AI remembers what was promised, decided and asked in your
-              client conversations, in person or on Google Meet, so you can
-              listen instead of taking notes. No meeting bot. Memories stay on
-              your phone.
-            </p>
+          </h1>
+          <div className="mt-10">
             <WaitlistForm available={signupAvailable} />
-            <p className="hero-perk">
-              The first 15 members get a setup call with the founder.
-            </p>
-            <a className="text-link" href="#demo">
-              See it in 20 seconds <span>Watch the demo</span>
-              <Play size={16} />
-            </a>
-          </div>
-          <div className="hero-visual" ref={heroVisual}>
-            <div className="hero-orbit" aria-hidden="true" />
-            <LiveCapture />
-            <div className="hero-phone">
-              <div className="hero-phone-tilt">
-                <img
-                  src="/images/screen-home.webp"
-                  width="560"
-                  height="1218"
-                  alt="Memory AI home screen with options to record a conversation, ask memory and review commitments. Fictional demo data."
-                />
-              </div>
-            </div>
-            <div className="hero-memory recreation">
-              <span className="recreation-tag">Illustration</span>
-              <div className="memory-label">
-                <Sparkles size={16} /> A detail, remembered
-              </div>
-              <AskAnswer />
-            </div>
           </div>
         </section>
-        <div className="hero-footer shell" data-reveal data-reveal-stagger>
-          <p>
-            Listen now.
-            <br />
-            <strong>Remember later.</strong>
-          </p>
-          <div>
-            <CheckCheck />
-            <span>No more half-remembered promises</span>
-          </div>
-          <div>
-            <CalendarClock />
-            <span>No more scrolling for context before a call</span>
-          </div>
-          <div>
-            <MessageCircle />
-            <span>No more “I thought we agreed…”</span>
-          </div>
-        </div>
 
+        {/* ── Flow film ── */}
         <section
-          id="the-problem"
-          className="problem section"
-          aria-labelledby="problem-title"
+          id="film"
+          aria-label="How online and offline conversations become insights"
+          className="mx-auto mt-14 w-[min(1120px,calc(100%-32px))] scroll-mt-24 sm:mt-20"
         >
-          <div className="shell problem-layout" data-reveal>
-            <div className="problem-art">
-              <FadingNotes />
-            </div>
-            <div className="problem-copy">
-              <p className="eyebrow">
-                <span className="eyebrow-line" /> Sound familiar?
-              </p>
-              <h2 id="problem-title">
-                It’s 6pm. Four client calls.
-                <br />
-                <span>Already blurring.</span>
-              </h2>
-              <p>
-                You were listening, not transcribing. Now the budget number, the
-                deadline and the thing you promised are slipping away.
-              </p>
-              <p>
-                Notes mid-call cost you the conversation. Notes afterwards miss
-                the details.
-              </p>
-              <p>
-                One-to-ones are the hardest. The coffee with a client, the site
-                visit, the quick chat after the pitch: no bot, no shared
-                minutes, only two memories. That’s often where the real
-                commitments are made.
-              </p>
-            </div>
+          <FlowFilm />
+        </section>
+
+        {/* ── How it works ── */}
+        <section id="how" className={cn(shell, "scroll-mt-24 pt-28 sm:pt-36")}>
+          <SectionHead
+            label="How it works"
+            title={
+              <>
+                Three steps. <em className="text-accent-ink">Zero</em> note-taking.
+              </>
+            }
+          />
+          <ol
+            data-reveal
+            data-reveal-stagger
+            className="group relative mt-14 grid gap-10 md:grid-cols-3 md:gap-8"
+          >
+            {/* Connector that draws across the three steps */}
+            <span
+              aria-hidden="true"
+              className="absolute left-[16.6%] right-[16.6%] top-7 hidden h-px origin-left bg-gradient-to-r from-accent via-line-strong to-accent transition-transform duration-[1400ms] ease-out group-data-[reveal=pending]:scale-x-0 md:block"
+            />
+            {steps.map((step, index) => (
+              <li
+                key={step.title}
+                className={cn(reveal, "relative text-center", "group-data-[reveal=pending]:translate-y-5 group-data-[reveal=pending]:opacity-0")}
+              >
+                <span className="relative mx-auto grid size-14 place-items-center rounded-2xl border border-line bg-surface text-accent-ink shadow-card">
+                  <step.icon size={22} />
+                  <span className="absolute -right-2 -top-2 grid size-6 place-items-center rounded-full bg-ink text-[0.6875rem] font-bold text-on-ink">
+                    {index + 1}
+                  </span>
+                </span>
+                <h3 className="mt-5 font-display text-3xl text-ink">{step.title}</h3>
+                <p className="mx-auto mt-2 max-w-xs leading-relaxed text-muted">
+                  {step.body}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* ── Insights ── */}
+        <section id="insights" className={cn(shell, "scroll-mt-24 pt-28 sm:pt-36")}>
+          <SectionHead
+            label="What you get"
+            title={
+              <>
+                Insights, <em className="text-accent-ink">not</em> transcripts.
+              </>
+            }
+          />
+          <div
+            data-reveal
+            data-reveal-stagger
+            className="group mt-14 grid gap-6 md:grid-cols-3"
+          >
+            {insights.map((item) => (
+              <article
+                key={item.image}
+                className={cn(
+                  reveal,
+                  "group-data-[reveal=pending]:translate-y-5 group-data-[reveal=pending]:opacity-0",
+                  "flex flex-col overflow-hidden rounded-[28px] border border-line bg-surface shadow-card transition hover:-translate-y-1 hover:shadow-lift",
+                )}
+              >
+                <h3 className="px-7 pt-7 text-lg font-semibold leading-snug text-ink">
+                  {item.title}
+                </h3>
+                <div className="mx-7 mt-6 h-[360px] overflow-hidden rounded-t-[22px] border border-b-0 border-line bg-tint">
+                  <img
+                    src={item.image}
+                    width={560}
+                    height={item.height}
+                    alt={item.alt}
+                    loading="lazy"
+                    className="w-full"
+                  />
+                </div>
+              </article>
+            ))}
           </div>
-          <div id="one-to-one" className="shell one-to-one">
-            <ul className="contrast-list" data-reveal data-reveal-stagger>
-              {oneToOne.map((row) => (
-                <li key={row.pain}>
-                  <span className="contrast-pain">{row.pain}</span>
-                  <ArrowRight className="contrast-arrow" aria-hidden="true" />
-                  <strong className="contrast-fix">{row.fix}</strong>
+          <p className="mt-4 text-center text-xs text-faint">
+            Real app screens, sample data.
+          </p>
+        </section>
+
+        {/* ── Demo video ── */}
+        <section id="demo" className={cn(shell, "scroll-mt-24 pt-28 sm:pt-36")}>
+          <SectionHead label="See it in the app" title="From a conversation to a kept promise." />
+          <figure
+            data-reveal
+            className={cn(
+              reveal,
+              "mx-auto mt-12 max-w-4xl overflow-hidden rounded-[28px] border border-line bg-surface p-2 shadow-float",
+            )}
+          >
+            <video
+              ref={demoVideo}
+              src="/video/demo.mp4"
+              poster="/video/demo-poster.webp"
+              width={1280}
+              height={720}
+              controls
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              aria-label="Product demo: recording a conversation, reviewing what AI picked up, asking a question and opening a prep brief."
+              className="block w-full rounded-[22px]"
+            />
+          </figure>
+        </section>
+
+        {/* ── Privacy ── */}
+        <section id="privacy" className={cn(shell, "scroll-mt-24 pt-28 sm:pt-36")}>
+          <div
+            data-reveal
+            className={cn(
+              reveal,
+              "rounded-[32px] border border-line bg-surface px-6 py-14 text-center shadow-card sm:px-12",
+            )}
+          >
+            <p className={eyebrow}>Privacy</p>
+            <h2 className={cn(sectionTitle, "mx-auto mt-4 max-w-2xl")}>
+              Your memories stay <em className="text-accent-ink">yours.</em>
+            </h2>
+            <ul className="mt-9 flex flex-wrap justify-center gap-3">
+              {privacy.map((item) => (
+                <li
+                  key={item.text}
+                  className="inline-flex items-center gap-2 rounded-full border border-line bg-bg px-4 py-2.5 text-sm font-medium text-ink"
+                >
+                  <item.icon size={16} className="text-accent-ink" aria-hidden="true" />
+                  {item.text}
                 </li>
               ))}
             </ul>
-            <p className="one-to-one-consent">
-              Always ask before you record.{" "}
-              <a href="#privacy">How your data is handled</a>
-            </p>
           </div>
         </section>
 
-        <section
-          id="demo"
-          className="demo section"
-          aria-labelledby="demo-title"
-        >
-          <div className="shell">
-            <div className="section-heading centered" data-reveal>
-              <p className="eyebrow">How it works</p>
-              <h2 id="demo-title">
-                From a coffee chat
-                <br />
-                <span>to a kept promise.</span>
-              </h2>
-              <p>Twenty seconds, real app screens.</p>
-            </div>
-            <figure className="demo-frame" data-reveal>
-              <video
-                ref={demoVideo}
-                src="/video/demo.mp4"
-                poster="/video/demo-poster.webp"
-                width="1280"
-                height="720"
-                controls
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                aria-describedby="demo-steps"
-              />
-            </figure>
-            <ol
-              id="demo-steps"
-              className="demo-steps"
-              data-reveal
-              data-reveal-stagger
-            >
-              {demoSteps.map((item) => (
-                <li key={item.when}>
-                  <strong>{item.when}</strong>
-                  <span>{item.text}</span>
-                </li>
-              ))}
-            </ol>
+        {/* ── FAQ ── */}
+        <section id="faq" className={cn(shell, "scroll-mt-24 pt-28 sm:pt-36")}>
+          <SectionHead label="FAQ" title="Fair questions." />
+          <div data-reveal className={cn(reveal, "mx-auto mt-12 max-w-2xl divide-y divide-line border-y border-line")}>
+            {faqs.map((item) => (
+              <details key={item.q} className="group py-1">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-left text-lg font-medium text-ink [&::-webkit-details-marker]:hidden">
+                  {item.q}
+                  <Plus
+                    size={20}
+                    aria-hidden="true"
+                    className="shrink-0 text-faint transition-transform duration-300 group-open:rotate-45"
+                  />
+                </summary>
+                <p className="pb-6 pr-10 leading-relaxed text-muted">{item.a}</p>
+              </details>
+            ))}
           </div>
         </section>
 
-        <section
-          id="fixes"
-          className="fixes section shell"
-          aria-labelledby="fixes-title"
-        >
-          <div className="section-heading heading-row" data-reveal>
-            <div>
-              <p className="eyebrow">What changes</p>
-              <h2 id="fixes-title">
-                Three things you’ll stop
-                <br />
-                <span>worrying about.</span>
-              </h2>
-            </div>
-            <p>
-              What you say today is still there when a client asks tomorrow.
-            </p>
-          </div>
-          <div className="fix-list">
-            {fixes.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article
-                  key={item.title}
-                  className={`fix-row ${item.className}`}
-                  data-reveal
-                >
-                  <div className="fix-pain">
-                    <span className="fix-pain-label">Sound like you?</span>
-                    <p>“{item.pain}”</p>
-                  </div>
-                  <div className="feature-card fix-card">
-                    <div className="feature-card-heading">
-                      <div className="feature-icon">
-                        <Icon size={26} />
-                      </div>
-                      <h3>{item.title}</h3>
-                      <p>{item.body}</p>
-                    </div>
-                    <div className="feature-screenshot">
-                      <img
-                        src={`/images/${item.image}.webp`}
-                        loading="lazy"
-                        alt={item.alt}
-                      />
-                    </div>
-                    <div className="feature-foot">
-                      <span>{item.foot}</span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-          <div className="cta-band" data-reveal>
-            <p>
-              <strong>Sound like you?</strong> Join early access and start with
-              5,000 free tokens.
-            </p>
-            <a className="button" href="#early-access" onClick={returnToSignup}>
-              Join early access <ArrowUpRight size={19} />
-            </a>
-          </div>
-        </section>
-
-        <section
-          id="privacy"
-          className="privacy section"
-          aria-labelledby="privacy-title"
-        >
-          <div className="shell">
-            <div className="privacy-top" data-reveal>
-              <div className="privacy-copy">
-                <p className="eyebrow">The obvious question</p>
-                <h2 id="privacy-title">
-                  Recording clients?
-                  <br />
-                  <span>On your terms.</span>
-                </h2>
-                <p>
-                  No bot joins the conversation. Audio is deleted from our
-                  servers as soon as it’s processed, and your memories are
-                  stored only on your phone.
-                </p>
-                <p className="privacy-small">
-                  Transcription and AI run on cloud services while a recording
-                  or Meet transcript is processed.
-                </p>
-                <div
-                  className="storage-flow"
-                  aria-label="Audio recorded on device, processed in the cloud and then deleted, memories saved on device"
-                >
-                  <div>
-                    <Smartphone />
-                    <strong>Record</strong>
-                    <span>On device</span>
-                  </div>
-                  <span className="flow-step" aria-hidden="true">
-                    <span className="flow-rail">
-                      <span className="flow-dot" />
-                    </span>
-                    <ArrowRight className="flow-arrow" />
-                  </span>
-                  <div>
-                    <Cloud />
-                    <strong>Process</strong>
-                    <span>Then deleted</span>
-                  </div>
-                  <span className="flow-step" aria-hidden="true">
-                    <span className="flow-rail">
-                      <span className="flow-dot" />
-                    </span>
-                    <ArrowRight className="flow-arrow" />
-                  </span>
-                  <div>
-                    <Smartphone />
-                    <strong>Remember</strong>
-                    <span>On device</span>
-                  </div>
-                </div>
-              </div>
-              <div className="privacy-art">
-                <PhoneFrame
-                  src="/images/screen-privacy.webp"
-                  alt="Actual Memory AI privacy settings screen showing how data moves: recorded here, processed temporarily, remembered here. Fictional demo data."
-                  caption="The same promise, inside the app."
-                />
-              </div>
-            </div>
-            <div className="control-grid" data-reveal data-reveal-stagger>
-              <div>
-                <ShieldCheck />
-                <h3>Review what stays</h3>
-                <p>
-                  Approve, correct or reject details. Replay supporting audio
-                  when retained.
-                </p>
-              </div>
-              <div>
-                <LockKeyhole />
-                <h3>Lock app access</h3>
-                <p>
-                  Use biometric access. This does not add database encryption.
-                </p>
-              </div>
-              <div>
-                <FileDown />
-                <h3>Take it with you</h3>
-                <p>
-                  Export a memory as Markdown, including its transcript and
-                  notes.
-                </p>
-              </div>
-              <div>
-                <Trash2 />
-                <h3>Delete when you want</h3>
-                <p>Remove recordings, individual memories or all local data.</p>
-              </div>
-            </div>
-            <p className="privacy-limit">
-              Cloud backup is optional and off by default. It covers folders and
-              your profile; recordings and transcripts stay on your phone, so
-              removing app data can remove your local memories.
-            </p>
-          </div>
-        </section>
-
-        <section
-          id="faq"
-          className="faq section shell"
-          aria-labelledby="faq-title"
-        >
-          <div className="faq-layout">
-            <div className="section-heading" data-reveal>
-              <p className="eyebrow">Before you ask</p>
-              <h2 id="faq-title">
-                Fair
-                <br />
-                <span>questions.</span>
-              </h2>
-            </div>
-            <div className="faq-list" data-reveal data-reveal-stagger>
-              {faqs.map((item) => (
-                <details key={item.q}>
-                  <summary>{item.q}</summary>
-                  <p>{item.a}</p>
-                </details>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="closing-section" aria-labelledby="closing-title">
-          <div className="shell closing-inner" data-reveal>
-            <div className="closing-mark">
-              <img src="/images/logo.png" width="64" height="64" alt="" />
-            </div>
-            <p className="eyebrow">Your next client conversation</p>
-            <h2 id="closing-title">
-              Stop relying on memory.
-              <br />
-              <span>Use one.</span>
+        {/* ── Closing ── */}
+        <section className={cn(shell, "py-28 text-center sm:py-36")}>
+          <div data-reveal className={reveal}>
+            <h2 className={cn(displayTitle, "mx-auto max-w-[16ch] text-[clamp(2.5rem,6vw,4.75rem)] leading-[1.02]")}>
+              Stop relying on memory. <em className="text-accent-ink">Use one.</em>
             </h2>
-            <p>
-              Join early access on Android and be among the first to try Memory
-              AI with your clients.
+            <p className={cn(lede, "mx-auto mt-5 max-w-md")}>
+              Join early access and be first to try Memory AI.
             </p>
-            <div className="closing-signup">
+            <div className="mt-9">
               <WaitlistForm available={signupAvailable} instance="closing" />
-              <div className="next-steps">
-                <p className="next-steps-title">What happens next</p>
-                <ol>
-                  {nextSteps.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ol>
-              </div>
             </div>
-            <a
-              className="text-link closing-deck"
-              href={deckUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Want the details? <span>View the deck</span>
-              <ArrowUpRight size={18} />
-            </a>
           </div>
         </section>
       </main>
-      <footer className="site-footer shell">
-        <a className="brand" href="#main" aria-label="Memory AI home">
-          <img src="/images/logo.png" width="36" height="36" alt="" />
-          <span>
-            Memory<span className="brand-ai">ai</span>
-          </span>
-        </a>
-        <p>Remember every client conversation.</p>
-        <p className="footer-note">
-          App screens are real, shown with sample data. Cards marked
-          Illustration are drawn for this page.
-        </p>
-        <a href={deckUrl} target="_blank" rel="noopener noreferrer">
-          Product deck <ArrowUpRight size={16} />
-        </a>
-      </footer>
+      <SiteFooter deckUrl={deckUrl} />
     </>
   );
 }

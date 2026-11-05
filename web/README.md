@@ -37,21 +37,28 @@ All deck links use **one setting: `DECK_URL`** in `.env` or the host environment
 
 ## Edit the website
 
-- `components/landing.tsx`: sections, feature copy, walkthrough and roadmap.
-- `components/app-ui/`: the hand-built illustrations (hero answer card, review card, audio meter) and the phone frame used for real screenshots.
-- `components/waitlist-form.tsx`: accessible signup UI and its states.
-- `app/globals.css`: design tokens, Instrument Serif + Inter typography, mint/ink/teal palette, responsive layouts and the reduced-motion kill switch.
-- `app/visuals.css`: everything added in the interactive refresh — the illustrations, hover states, staggered reveals and the privacy flow animation. Loaded after `globals.css` from `app/layout.tsx`.
+Styling is **Tailwind utility classes only**, written in the components. There are no hand-written component classes.
+
+- `components/landing.tsx`: home page sections and copy: hero, how it works, insights, demo video, privacy, FAQ and closing.
+- `components/flow-film.tsx`: the animated online + offline → memory → insights illustration under the hero.
+- `components/site-chrome.tsx`: shared header (nav, theme toggle, mobile menu) and footer, used on the home page and the blog.
+- `components/theme-toggle.tsx`: the light/dark switch.
+- `components/waitlist-form.tsx`: accessible pill-shaped signup form and its states.
+- `app/blog/`, `lib/blog.ts`: blog list, post pages and post content. To add a post, append to `posts` in `lib/blog.ts` and put its images in `public/blog/<slug>/`.
+- `lib/ui.ts`: shared Tailwind class strings (buttons, eyebrow, titles, reveal). `lib/use-reveal.ts`: scroll-reveal hook.
+- `app/globals.css`: fonts, colour tokens for both themes, their mapping to Tailwind names (`bg-surface`, `text-ink`, `text-accent-ink`, …), base element rules and the flow-film keyframes.
 - `lib/waitlist.ts`: validation, duplicate handling and server-side storage.
 - `lib/server-settings.ts`: private environment settings and public deck configuration.
 - `public/`: optimized real app screenshots, artwork, self-hosted fonts and PDF.
 - `ASSETS.md`: source assets and licensing.
 
-### Colour and motion
+### Colour, theme and motion
 
-The palette mirrors the app's own tokens in `mobile-app/src/theme.ts`. Two deliberate exceptions: `--accent` (`#16af99`, the app's accent) is only ever a fill, and `--muted` stays web-tuned, because the app's values fall below 4.5:1 on this background. Text and focus rings use `--accent-ink` and `--muted`. There is no dark mode.
+The light palette mirrors the app's own tokens in `mobile-app/src/theme.ts`; `[data-theme="dark"]` in `globals.css` overrides the same variables for dark mode, so every utility switches automatically (`dark:` is available for one-offs). `--accent` (`#16af99`) is only ever a fill; text uses `--accent-ink`. An inline script in `app/layout.tsx` sets `<html data-theme>` before first paint from the saved choice (`localStorage.theme`) or the OS preference.
 
-All motion is gated by one `prefers-reduced-motion` block at the end of `globals.css`, which sets `animation: none !important` on everything. Because that freezes an animation at its *first* keyframe, every once-only effect declares its **finished** state as its resting CSS; the reveal observer adds `.will-reveal` to rewind it and `.is-visible` to play it forward, and it never adds `.will-reveal` under reduced motion. `.will-reveal` is never removed, so any `.is-visible` rule must restate the finished values, not just supply a transition.
+All motion is disabled by one `prefers-reduced-motion` block at the end of `globals.css`. Animated elements declare their **finished** state as their resting style, so with motion off the flow film shows its final frame. Scroll reveals mark elements `data-reveal="pending"` only after JavaScript runs, so nothing is hidden without it. The flow film has a pause button and stops while off screen.
+
+Tailwind only generates classes it finds written out in the source, so never build class names from strings at runtime (for example `` `[animation:${name}…]` ``). Spell them out, as `beat` in `flow-film.tsx` does.
 
 Current MVP means implemented in the repository, not public release or production readiness. Roadmap cards deliberately say **Planned**. Screenshots use fictional demo data, and the two hand-built interface illustrations are labelled **Illustration** and drawn with a dashed edge so they are never mistaken for app captures. Permanent memories are local to the app; AI uses cloud processing. The current app has no built-in cloud backup/device sync, and biometric access does not encrypt its database.
 

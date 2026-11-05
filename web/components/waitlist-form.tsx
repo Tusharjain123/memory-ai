@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, CheckCircle2, LoaderCircle } from "lucide-react";
+import { buttonPrimary } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
 type State = "idle" | "pending" | "success" | "error";
 type Result = { ok: boolean; message: string };
@@ -141,16 +143,18 @@ export function WaitlistForm({
     return () => controller.abort();
   }, [submit, available, instance]);
   return (
-    <div id={id("early-access")} className="hero-signup">
-      <p className="signup-invitation">
-        Early access for Android · 5,000 free tokens to start.
-      </p>
+    <div id={id("early-access")} className="mx-auto w-full max-w-[520px] scroll-mt-28">
       {state === "success" ? (
-        <div className="signup-success" role="status">
-          <CheckCircle2 size={23} />
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-3xl border border-line bg-surface px-5 py-4 text-left shadow-card"
+        >
+          <CheckCircle2 size={24} className="shrink-0 text-accent-ink" />
           <div>
-            <strong>You’re on the list.</strong>
-            <p>We’ll be in touch when early access is available.</p>
+            <strong className="block text-ink">You’re on the list.</strong>
+            <p className="text-sm text-muted">
+              We’ll be in touch when early access is available.
+            </p>
           </div>
         </div>
       ) : (
@@ -164,7 +168,10 @@ export function WaitlistForm({
           <label htmlFor={id("waitlist-email")} className="sr-only">
             Email address
           </label>
-          <div className="honeypot" aria-hidden="true">
+          <div
+            aria-hidden="true"
+            className="absolute -left-[9999px] h-px w-px overflow-hidden"
+          >
             <label htmlFor={id("company")}>Company website</label>
             <input
               id={id("company")}
@@ -175,14 +182,14 @@ export function WaitlistForm({
               onChange={(event) => setCompany(event.target.value)}
             />
           </div>
-          <div className="email-control">
+          <div className="flex items-center gap-2 rounded-full border border-line bg-surface p-1.5 pl-5 shadow-float transition focus-within:border-accent-ink has-[input[aria-invalid=true]]:border-red-500/70">
             <input
               id={id("waitlist-email")}
               name="email"
               type="email"
               autoComplete="email"
               inputMode="email"
-              placeholder="Your email address"
+              placeholder="Enter email"
               maxLength={254}
               required
               disabled={!available || state === "pending"}
@@ -196,36 +203,38 @@ export function WaitlistForm({
                   setMessage("");
                 }
               }}
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-base text-ink outline-none placeholder:text-faint focus-visible:outline-none disabled:cursor-not-allowed"
             />
             <button
-              className="button"
               type="submit"
               disabled={!available || state === "pending"}
+              className={cn(buttonPrimary, "px-5 py-3 max-[420px]:px-4")}
             >
               {state === "pending" ? (
                 <>
-                  Joining… <LoaderCircle className="spin" size={19} />
+                  Joining… <LoaderCircle className="animate-spin" size={17} />
                 </>
               ) : (
                 <>
-                  Join early access <ArrowUpRight size={19} />
+                  Join the waitlist
+                  <ArrowUpRight size={17} className="max-[420px]:hidden" />
                 </>
               )}
             </button>
           </div>
           <p
             id={id("signup-message")}
-            className="form-message"
             role={state === "error" ? "alert" : "status"}
+            className="mt-2 min-h-5 text-sm font-medium text-red-700 dark:text-red-300"
           >
             {message}
           </p>
         </form>
       )}
-      <p id={id("signup-note")} className="form-note">
+      <p id={id("signup-note")} className="mt-1 text-[0.8125rem] text-faint">
         {!available
-          ? "Early-access signup opens soon. Explore the idea in the meantime."
-          : "By joining, you agree to receive Memory AI early-access updates. No account needed."}
+          ? "Early-access signup opens soon."
+          : "For iOS and Android · 5,000 free tokens to start"}
       </p>
     </div>
   );
