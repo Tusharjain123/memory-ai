@@ -361,9 +361,6 @@ export function FlowFilm() {
           <span className="absolute left-[82.5%] -translate-x-1/2">Understand</span>
         </div>
 
-        <span className="absolute left-3 top-3 z-20 rounded-full md:left-4 md:top-4 border border-dashed border-line-strong px-2.5 py-1 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-faint">
-          Illustration
-        </span>
         <button
           type="button"
           onClick={() => setUserPaused(!userPaused)}
