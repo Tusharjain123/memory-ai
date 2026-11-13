@@ -23,6 +23,14 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    rules: {
+      // vinext's next/link shim throws on click in production builds
+      // (preventDefault runs, then navigateClientSide is undefined), so the
+      // site uses plain <a> for internal links. Revisit after upgrading vinext.
+      "@next/next/no-html-link-for-pages": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

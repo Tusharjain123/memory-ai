@@ -1,6 +1,5 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
-import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
@@ -15,7 +14,7 @@ const navItems = [
 
 function Brand({ small = false }: { small?: boolean }) {
   return (
-    <Link
+    <a
       href="/"
       aria-label="Memory AI home"
       className={cn(
@@ -33,7 +32,7 @@ function Brand({ small = false }: { small?: boolean }) {
       <span>
         Memory<span className="ml-0.5 text-accent-ink">ai</span>
       </span>
-    </Link>
+    </a>
   );
 }
 
@@ -79,25 +78,25 @@ export function SiteHeader({
             className="hidden items-center gap-8 text-[0.9375rem] md:flex"
           >
             {links.map(([label, href]) => (
-              <Link
+              <a
                 key={href}
                 href={href}
                 aria-current={current === "blog" && href === "/blog" ? "page" : undefined}
                 className="text-muted transition hover:text-ink aria-[current=page]:font-semibold aria-[current=page]:text-ink"
               >
                 {label}
-              </Link>
+              </a>
             ))}
           </nav>
           <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
-            <Link
+            <a
               href={`${base}#early-access`}
               onClick={focusSignup}
               className={cn(buttonPrimary, "hidden px-4 py-2.5 sm:inline-flex")}
             >
               Join early access <ArrowRight size={16} />
-            </Link>
+            </a>
             <button
               type="button"
               aria-label={open ? "Close navigation" : "Open navigation"}
@@ -121,7 +120,7 @@ export function SiteHeader({
           >
             {[...links, ["Join early access", `${base}#early-access`] as const].map(
               ([label, href]) => (
-                <Link
+                <a
                   key={href}
                   href={href}
                   onClick={href.endsWith("#early-access") ? focusSignup : () => setOpen(false)}
@@ -129,7 +128,7 @@ export function SiteHeader({
                 >
                   {label}
                   <ArrowUpRight size={18} className="text-faint" />
-                </Link>
+                </a>
               ),
             )}
           </nav>
@@ -151,9 +150,9 @@ export function SiteFooter({ deckUrl }: { deckUrl?: string }) {
         <Brand small />
         <p>© {new Date().getFullYear()} Memory AI · Remember every conversation.</p>
         <div className="flex items-center gap-6">
-          <Link href="/blog" className="transition hover:text-ink">
+          <a href="/blog" className="transition hover:text-ink">
             Blog
-          </Link>
+          </a>
           {deckUrl && (
             <a
               href={deckUrl}

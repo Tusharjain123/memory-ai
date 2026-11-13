@@ -1,5 +1,4 @@
 /* eslint-disable @next/next/no-img-element */
-import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, ArrowUpRight } from "lucide-react";
@@ -85,12 +84,12 @@ export default async function BlogPostPage({ params }: Props) {
       <main id="main">
         <article className="pb-24 pt-12 sm:pb-32 sm:pt-16">
           <header className={cn(shell, "max-w-3xl text-center")}>
-            <Link
+            <a
               href="/blog"
               className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition hover:text-accent-ink"
             >
               <ArrowLeft size={16} /> All posts
-            </Link>
+            </a>
             <h1 className={cn(displayTitle, "mt-7 text-[clamp(2.75rem,6vw,4.75rem)] leading-none")}>
               {post.title}
             </h1>
@@ -132,9 +131,9 @@ export default async function BlogPostPage({ params }: Props) {
               part of what we’re building.
             </p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-6">
-              <Link href="/#early-access" className={buttonPrimary}>
+              <a href="/#early-access" className={buttonPrimary}>
                 Join early access <ArrowRight size={16} />
-              </Link>
+              </a>
               {post.originalUrl && (
                 <a
                   href={post.originalUrl}

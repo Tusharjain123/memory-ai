@@ -1,5 +1,4 @@
 /* eslint-disable @next/next/no-img-element */
-import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowRight } from "lucide-react";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
@@ -34,7 +33,7 @@ export default function BlogIndex() {
         <ul className="mt-14 grid gap-7">
           {posts.map((post) => (
             <li key={post.slug}>
-              <Link
+              <a
                 href={`/blog/${post.slug}`}
                 className="group grid items-center gap-5 rounded-[28px] border border-line bg-surface p-3.5 shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-lift md:grid-cols-[1.05fr_1fr] md:gap-10 md:p-5"
               >
@@ -63,7 +62,7 @@ export default function BlogIndex() {
                     />
                   </span>
                 </div>
-              </Link>
+              </a>
             </li>
           ))}
         </ul>
